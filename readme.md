@@ -2,6 +2,13 @@
 
 This repo will the home of working documents for my honors project!!
 
+## git workflow
+1. open issues for major coding components
+2. work on those issues on a corresponding branch (ie, issue_1)
+3. pull request/merge to master when that step is finished
+
+This way, I have a log of what I did and when. 
+
 ## best practices/reminders
 
 Mostly to remind myself as I go to be neat for future Raven
