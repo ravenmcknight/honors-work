@@ -42,7 +42,7 @@ noAPC_trips <- noAPC_trips[!line_id %in% c('888', '922', '771', '740', '791', '9
                                            '969','941','970','971','972','973')]
 
 # check range of dates before continuing!
-#range(noAPC_trips$date_key)
+range(noAPC_trips$date_key)
 
 ## pull schedule for missing trips ------------------------
 # get stop-level schedule for trips without APC
@@ -142,7 +142,6 @@ saveRDS(apcboth, 'data/apc-interpolated.RDS')
 # sum by route, stop, day for export
 ## summarize observed APC: sum boards by date, route
 
-
 apc_sum <- apcboth[, .(daily_boards = sum(board, na.rm = T), num_trips = .N, num_interpolated = sum(interpolated)), 
                    keyby = .(date_key, line_id, line_direction, service_id, site_id)]
 apc_sum
@@ -151,5 +150,4 @@ apc_sum <- apc_sum[as.integer(line_id) < 921]
 apc_sum <- apc_sum[line_id != '906']
 apc_sum[, sort(unique(line_id))]
 
-
-fwrite(apc_sum_stops, 'minWage/Data/MetroTransit-Boardings-Route-Stop-GAP-FILLED-20170701-20181231.csv', row.names = F)
+saveRDS(apc_sum, 'data/apc-aggregate.RDS')
