@@ -142,7 +142,7 @@ saveRDS(apcboth, 'data/apc-interpolated.RDS')
 # sum by route, stop, day for export
 ## summarize observed APC: sum boards by date, route
 
-apc_sum <- apcboth[, .(daily_boards = sum(board, na.rm = T), num_trips = .N, num_interpolated = sum(interpolated)), 
+apc_sum <- apchboth[, .(daily_boards = sum(board, na.rm = T), daily_alights = sum(alight, na.rm = T), num_trips = .N, num_interpolated = sum(interpolated)), 
                    keyby = .(date_key, line_id, line_direction, service_id, site_id)]
 apc_sum
 apc_sum[num_interpolated > 0, .N, ,(line_id)][order(-N)]
