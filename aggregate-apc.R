@@ -54,23 +54,30 @@ stop_to_bg <- apc_bg[, c('site_id', 'GEOID')]
 saveRDS(stop_to_bg, 'data/stop-to-bg.RDS')
 
 # save verion with no buffering
-
-apc_bg[, ag_board := sum(daily_boards, na.rm = T), by = c('date_key', 'GEOID', 'line_id', 'line_direction')]
-saveRDS(apc_bg, 'data/apc_bgs.RDS')
+apc_bg_sum <- apc_bg[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
+                     by = c('GEOID', 'date_key', 'line_id', 'line_direction', 'service_id')]
+saveRDS(apc_bg_sum, 'data/mt-data/apc-bg-sum.RDS')
 
 
 ## with buffering -----------------------------------------
-stopsh <- stops %>% filter(county == 'Scott') # tiniest county
-stopsh <- st_transform(stopsh, 32615) # can't buffer lat/long
-stop_buff <- st_buffer(stopsh, 10) # 10m buffer should handle opposite side of street
+
+# start with a small subset 
+stops <- stops %>% filter(county == 'Anoka')
+stops <- st_transform(stops, 32615) # can't buffer lat/long
+stop_buff <- st_buffer(stops, 10) # 10m buffer should handle opposite side of street
 stop_buff <- st_transform(stop_buff, 4326)
 
-# then repeat above, just for Scott county though
+# i'm realizing now this is not the most efficient way to do this but i do think it works
+# hard to check until I make some maps
 apc_loc_buff <- left_join(stop_buff, apc)
-rm(stopsh, stops, apc, stop_buff) # trying to speed next step up because oof
-apc_bg_buff <- st_join(apc_loc_buff, bgs, st_intersects)
-setDT(apc_bg_buff)
-apc_bg_buff[, ag_board := sum(daily_boards, na.rm = T), by = c('date_key', 'GEOID', 'line_id', 'line_direction')]
-saveRDS(apc_bg_buff, 'data/apc_bgs_buff.RDS')
+rm(apc)
 
-# we'll use Scott county as an example to see what buffering changes
+stop_buff_bg <- st_join(stop_buff, bgs, st_intersects)
+setDT(stop_buff_bg)
+
+apc_bg_buff <- left_join(apc_loc_buff, stop_buff_bg, by = 'site_id')
+setDT(apc_bg_buff)
+
+apc_bg_buff_sum <- apc_bg_buff[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
+                               by = c('date_key', 'GEOID', 'line_id', 'line_direction')]
+saveRDS(apc_bg_buff_sum, 'data/mt-data/apc-bg-buff-sum.RDS')
