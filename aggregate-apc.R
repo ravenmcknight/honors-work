@@ -58,6 +58,11 @@ apc_bg_sum <- apc_bg[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = su
                      by = c('GEOID', 'date_key', 'line_id', 'line_direction', 'service_id')]
 saveRDS(apc_bg_sum, 'data/mt-data/apc-bg-sum.RDS')
 
+apc_bg_sum <- readRDS('data/mt-data/apc-bg-sum.RDS') 
+# save most aggregated version
+apc_bg_ag_sum <- apc_bg_sum[, .(ag_board = sum(ag_board, na.rm = T), ag_alight = sum(ag_alight, na.rm = T), ag_trips = sum(ag_trips, na.rm = T), ag_interp = sum(ag_interp, na.rm = T)),
+                        by = c('GEOID', 'date_key')]
+saveRDS(apc_bg_ag_sum, 'data/mt-data/apc-bg-ag-sum.RDS')
 
 ## with buffering -----------------------------------------
 
@@ -67,8 +72,6 @@ stops <- st_transform(stops, 32615) # can't buffer lat/long
 stop_buff <- st_buffer(stops, 10) # 10m buffer should handle opposite side of street
 stop_buff <- st_transform(stop_buff, 4326)
 
-# i'm realizing now this is not the most efficient way to do this but i do think it works
-# hard to check until I make some maps
 apc_loc_buff <- left_join(stop_buff, apc)
 rm(apc)
 
@@ -78,6 +81,9 @@ setDT(stop_buff_bg)
 apc_bg_buff <- left_join(apc_loc_buff, stop_buff_bg, by = 'site_id')
 setDT(apc_bg_buff)
 
-apc_bg_buff_sum <- apc_bg_buff[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
-                               by = c('date_key', 'GEOID', 'line_id', 'line_direction')]
-saveRDS(apc_bg_buff_sum, 'data/mt-data/apc-bg-buff-sum.RDS')
+# just export super aggregated version
+apc_bg_ag_buff_sum <- apc_bg_buff[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
+                               by = c('date_key', 'GEOID')]
+saveRDS(apc_bg_ag_buff_sum, 'data/mt-data/apc-bg-ag-buff-sum.RDS')
+
+
