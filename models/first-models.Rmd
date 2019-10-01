@@ -38,7 +38,7 @@ This document will explore some of **the most** basic models for ridership.
 I'll start with the most basic, most aggregated version of a ridership model. For now, the response variable will be **average 2017 daily boardings + alightings/total square kilometers by Census block group**. I don't currently have a reason for using square kilometers over other measures of area, other than that the Census distributes land area in meters. Here is the distribution of that response variable. 
 ```{r}
 # not the ideal way to read in data
-apc <- readRDS('/Users/raven/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
+apc <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
 setDT(apc)
 
 # restrict to 2017
@@ -79,7 +79,7 @@ Generally, ridership always needs to be transformed because those outliers will 
 I'm going to start with some basic demographic predictors. Strangely, Met Council never used any demographics (other than population density) as predictors. Intuition & experience at Metro Transit definitely suggest that basic indicators like household income & language spoken at home should have substantial effects. 
 
 ```{r}
-acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/Covariates/basic_acs.RDS')
+acs <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
 setDT(acs)
 
 # restrict to 2017
@@ -101,6 +101,61 @@ ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh'], aes(x=l
 ```
 
 ## Ridership ~ Population
+Since these are such simple models, I'm going to write the stan code in r chunks. Just to get up and running with Stan, I'll assume everything is normal. 
+
+```{r}
+# join ridership & population
+pop_mod_dat1 <- acs[variable =='tot_pop'][apc, on = 'GEOID']
+
+# set NA ridership to 0? -- this is probably a bigger methodological question
+# bottom code
+pop_mod_dat1[is.na(avg_activity_dens) | avg_activity_dens == 0, avg_activity_dens := 0.01]
+pop_mod_dat1[is.na(estimate) | estimate == 0, estimate := 0.01]
+
+# define the data to give to stan
+pop_mod_dat <- list(N = length(pop_mod_dat1$estimate),
+                    y = log(as.numeric(pop_mod_dat1$avg_activity_dens)),
+                    x = log(as.numeric(pop_mod_dat1$estimate)))
+
+pop_mod_dat$y <- as.integer(pop_mod_dat$y)
+pop_mod_dat$x <- as.integer(pop_mod_dat$x)
+```
+
+```{r}
+# define the model
+pop_mod = "
+data {
+  // number of observations
+  int N;
+  
+  // y as an array of integers
+  int y[N];
+
+  matrix[N, 1] x;
+
+}
+parameters {
+  real mu;
+  real theta;
+}
+model {
+  // priors
+  mu ~ normal(0, 10);
+  theta ~ normal(0, 10);
+
+  // likelihood
+  y ~ normal(mu, theta);
+}
+"
+```
+
+```{r}
+# Let's try fitting
+fit <- stan(model_code = pop_mod, data = pop_mod_dat, iter = 1000, verbose = TRUE)
+```
+```{stan output.var=}
+
+```
 
 ## Ridership ~ Household income
 
