@@ -1,0 +1,107 @@
+---
+title: "Most Basic Models"
+author: "Raven McKnight"
+date: "9/30/2019"
+output: 
+  html_document:
+    theme: paper
+    code_folding: hide
+---
+
+```{r setup, warning = FALSE, message = FALSE, results = 'hide'}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr')
+
+miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
+
+if(length(miss_pkgs) > 0){
+  install.packages(miss_pkgs)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+rm(miss_pkgs, packages)
+rstan_options(auto_write = TRUE)
+
+options(tigris_class = 'sf')
+counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
+bgs <- block_groups('MN', counties, year = 2016)
+bgs <- st_transform(bgs, 32615) # let's go straight to mapping
+```
+
+This document will explore some of **the most** basic models for ridership. 
+
+## Variables
+
+### Response
+
+I'll start with the most basic, most aggregated version of a ridership model. For now, the response variable will be **average 2017 daily boardings + alightings/total square kilometers by Census block group**. I don't currently have a reason for using square kilometers over other measures of area, other than that the Census distributes land area in meters. Here is the distribution of that response variable. 
+```{r}
+# not the ideal way to read in data
+apc <- readRDS('/Users/raven/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
+setDT(apc)
+
+# restrict to 2017
+apc <- apc[date_key %like% 2017]
+
+# get averages
+apc <- apc[, .(avg_activity = mean(ag_board + ag_alight)), by = GEOID]
+
+# join to block groups
+apc <- left_join(bgs, apc, by = 'GEOID')
+
+# get response var
+apc <- apc %>%
+  mutate(land_km = ALAND/1000000, 
+         avg_activity_dens = avg_activity/land_km)
+
+ggplot(apc, aes(x=avg_activity_dens)) +
+  geom_histogram() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Distribution of average daily activity per square kilometer, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+There are a few huge outliers, mostly at transit centers in the downtowns. Log transformed response variable: 
+
+```{r}
+ggplot(apc, aes(x=log(avg_activity_dens))) +
+  geom_histogram() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Log distribution of average daily activity per square kilometer, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Generally, ridership always needs to be transformed because those outliers will always be there. 
+
+### Covariates
+
+I'm going to start with some basic demographic predictors. Strangely, Met Council never used any demographics (other than population density) as predictors. Intuition & experience at Metro Transit definitely suggest that basic indicators like household income & language spoken at home should have substantial effects. 
+
+```{r}
+acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/Covariates/basic_acs.RDS')
+setDT(acs)
+
+# restrict to 2017
+acs <- acs[year == 3]
+
+ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh'], aes(x=estimate)) +
+  geom_histogram() + 
+  facet_wrap(~variable) +
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Distribution of covariates, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh'], aes(x=log(estimate))) +
+  geom_histogram() + 
+  facet_wrap(~variable) +
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Log distribution of covariates, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Ridership ~ Population
+
+## Ridership ~ Household income
+
+## Ridership ~ Vehicle Deficit
