@@ -35,7 +35,7 @@ basics <- map_dfr(
   years,
   ~ get_acs(
     geography = "block group",
-    variables = c(tot_pop = "B00001_001",
+    variables = c(tot_pop = "B01003_001",
                   tot_no_veh = "B08201_002",
                   median_age = "B01002_001",
                   median_hh_income = "B19013_001",

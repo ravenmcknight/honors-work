@@ -29,16 +29,12 @@ bgs <- block_groups('MN', counties, year = 2016)
 bgs <- st_transform(bgs, 32615) # let's go straight to mapping
 ```
 
-This document will explore some of **the most** basic models for ridership. 
+This document will explore some of **the most** basic models for ridership. I'll use the most aggregated data to start with, and focus just on 2017 -- the most recent year with 5-year ACS estimates. The response variable wil lbe **average daily boardings + alightings per capita by block group**. We chose per capita rather than by acre/sqaure mile because the research question Metro Transit is most interested in is *who* is riding and (maybe more importantly) who is riding *less* now than a few years ago. 
 
-## Variables
-
-### Response
-
-I'll start with the most basic, most aggregated version of a ridership model. For now, the response variable will be **average 2017 daily boardings + alightings/total square kilometers by Census block group**. I don't currently have a reason for using square kilometers over other measures of area, other than that the Census distributes land area in meters. Here is the distribution of that response variable. 
+Here is a distribution of the repsonse variable: 
 ```{r}
 # not the ideal way to read in data
-apc <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
+apc <- readRDS('/Users/raven/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
 setDT(apc)
 
 # restrict to 2017
@@ -47,116 +43,144 @@ apc <- apc[date_key %like% 2017]
 # get averages
 apc <- apc[, .(avg_activity = mean(ag_board + ag_alight)), by = GEOID]
 
-# join to block groups
-apc <- left_join(bgs, apc, by = 'GEOID')
-
-# get response var
-apc <- apc %>%
-  mutate(land_km = ALAND/1000000, 
-         avg_activity_dens = avg_activity/land_km)
-
-ggplot(apc, aes(x=avg_activity_dens)) +
-  geom_histogram() + 
-  theme_minimal() +
-  labs(x = 'activity', y = 'count', title = 'Distribution of average daily activity per square kilometer, 2017') +
-  theme(plot.title = element_text(hjust = 0.5))
-```
-
-There are a few huge outliers, mostly at transit centers in the downtowns. Log transformed response variable: 
-
-```{r}
-ggplot(apc, aes(x=log(avg_activity_dens))) +
-  geom_histogram() + 
-  theme_minimal() +
-  labs(x = 'activity', y = 'count', title = 'Log distribution of average daily activity per square kilometer, 2017') +
-  theme(plot.title = element_text(hjust = 0.5))
-```
-
-Generally, ridership always needs to be transformed because those outliers will always be there. 
-
-### Covariates
-
-I'm going to start with some basic demographic predictors. Strangely, Met Council never used any demographics (other than population density) as predictors. Intuition & experience at Metro Transit definitely suggest that basic indicators like household income & language spoken at home should have substantial effects. 
-
-```{r}
-acs <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
+# join to acs population
+acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
 setDT(acs)
-
-# restrict to 2017
 acs <- acs[year == 3]
 
-ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh'], aes(x=estimate)) +
+apc <- acs[variable =='tot_pop'][apc, on = 'GEOID']
+
+# this is our response variable for modeling at this point. 
+apc <- apc[, .(avg_act_per_capita = mean(avg_activity/estimate), tot_pop = estimate), by = 'GEOID']
+
+ggplot(apc, aes(x=avg_act_per_capita)) +
   geom_histogram() + 
-  facet_wrap(~variable) +
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Distribution of average daily activity per capita, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x=log(avg_act_per_capita))) +
+  geom_histogram() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Log distribution of average daily activity per capita, 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+In general, measures of ridership should be transformed because there will always be outliers. Since we're measuring per capita, outliers might be occurring in anticipated places (downtown transit centers) *or* more rural park-and-rides. 
+
+Here are the distributions of some of the simpler covariates we'll use. 
+
+```{r}
+ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh' & variable != 'tot_pop'], aes(x=estimate)) +
+  geom_histogram() + 
+  facet_wrap(~variable, scales = 'free') +
   theme_minimal() +
   labs(x = 'activity', y = 'count', title = 'Distribution of covariates, 2017') +
   theme(plot.title = element_text(hjust = 0.5))
 
-ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh'], aes(x=log(estimate))) +
+ggplot(acs[variable != 'speak_only_english' & variable != 'tot_no_veh' & variable != 'tot_pop'], aes(x=log(estimate))) +
   geom_histogram() + 
-  facet_wrap(~variable) +
+  facet_wrap(~variable, scales = 'free') +
   theme_minimal() +
   labs(x = 'activity', y = 'count', title = 'Log distribution of covariates, 2017') +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-## Ridership ~ Population
-Since these are such simple models, I'm going to write the stan code in r chunks. Just to get up and running with Stan, I'll assume everything is normal. 
+I feel like I've missed a very basic piece of information somewhere along the way: if my response is logged, should my covariates also be logged? Also, since my response is per capita, should I try to get my demographic predictors on a more similar scale? i.e., percent below poverty line rather than median income?
+
+Let's look at percent who whose race is reported as "white alone." 
+```{r}
+white_alone <- acs[variable == 'white_alone']
+
+apc[, variable := NULL]
+
+# get population
+names(apc)
+apc <- white_alone[, c('estimate', 'GEOID')][apc, on  = 'GEOID']
+setnames(apc, 'estimate', 'white_alone')
+
+apc[, perc_white_alone := white_alone/tot_pop]
+
+ggplot(apc, aes(x=perc_white_alone)) +
+  geom_density() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Percent "white alone", 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = perc_white_alone, y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'percent white alone vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = log(perc_white_alone), y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'log percent white alone vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Models
+
+The idea at this point is to start with some simple linear regressions, then introduce explicit spatial methods, and then introduce time. This document is the starting point. 
+
+## Ridership ~ white alone
+Since this model is so simple, I'm going to write the stan code within R below. 
 
 ```{r}
-# join ridership & population
-pop_mod_dat1 <- acs[variable =='tot_pop'][apc, on = 'GEOID']
+# prepare the data for stan
+race_dat1 <- left_join(bgs, apc, by = 'GEOID')
+setDT(race_dat1)
 
-# set NA ridership to 0? -- this is probably a bigger methodological question
 # bottom code
-pop_mod_dat1[is.na(avg_activity_dens) | avg_activity_dens == 0, avg_activity_dens := 0.01]
-pop_mod_dat1[is.na(estimate) | estimate == 0, estimate := 0.01]
+race_dat1[is.na(avg_act_per_capita) | avg_act_per_capita == 0 | is.infinite(avg_act_per_capita), avg_act_per_capita := 0.01]
+race_dat1[is.na(perc_white_alone) | perc_white_alone == 0 | is.infinite(perc_white_alone), perc_white_alone := 0.01]
 
-# define the data to give to stan
-pop_mod_dat <- list(N = length(pop_mod_dat1$estimate),
-                    y = log(as.numeric(pop_mod_dat1$avg_activity_dens)),
-                    x = log(as.numeric(pop_mod_dat1$estimate)))
-
-pop_mod_dat$y <- as.integer(pop_mod_dat$y)
-pop_mod_dat$x <- as.integer(pop_mod_dat$x)
+race_dat <- list(N = length(race_dat1$avg_act_per_capita),
+                 y = log(as.numeric(race_dat1$avg_act_per_capita)),
+                 x = log(as.numeric(race_dat1$perc_white_alone)))
 ```
 
-```{r}
-# define the model
-pop_mod = "
+```{r results = "hide"}
+# write stan model 
+race_mod = "
 data {
-  // number of observations
-  int N;
-  
-  // y as an array of integers
-  int y[N];
-
-  matrix[N, 1] x;
-
+ int < lower = 1 > N; // Sample size
+ vector[N] x; // Predictor
+ vector[N] y; // Outcome
 }
+
 parameters {
-  real mu;
-  real theta;
+ real alpha; // Intercept
+ real beta; // Slope (regression coefficients)
+ real < lower = 0 > sigma; // Error SD
 }
+
 model {
-  // priors
-  mu ~ normal(0, 10);
-  theta ~ normal(0, 10);
-
-  // likelihood
-  y ~ normal(mu, theta);
+ y ~ normal(alpha + x * beta , sigma);
 }
+
 "
+# run!
+# set verbose = TRUE for debugging
+race_fit <- stan(model_code = race_mod, data = race_dat, iter = 1000, verbose = FALSE)
 ```
-
 ```{r}
-# Let's try fitting
-fit <- stan(model_code = pop_mod, data = pop_mod_dat, iter = 1000, verbose = TRUE)
+summary(race_fit)
+race_posterior <- extract(race_fit)
+#str(race_posterior)
+
+#launch_shinystan(race_fit)
 ```
-```{stan output.var=}
+I think I need to know more about evaluating models once I've fit them. I'm not quite sure what to make of n_eff being greater than the iterations. 
 
+Trying unlogged predictor: 
+```{r}
+race_dat2 <- list(N = length(race_dat1$avg_act_per_capita),
+                 y = log(as.numeric(race_dat1$avg_act_per_capita)),
+                 x = as.numeric(race_dat1$perc_white_alone))
+
+racefit2 <- stan(model_code = race_mod, data = race_dat2, iter = 1000)
+summary(racefit2)
 ```
 
-## Ridership ~ Household income
-
-## Ridership ~ Vehicle Deficit
