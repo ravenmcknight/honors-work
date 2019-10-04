@@ -10,7 +10,7 @@ output:
 
 ```{r setup, warning = FALSE, message = FALSE, results = 'hide'}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
-packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr')
+packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr', 'shinystan')
 
 miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
 
@@ -95,7 +95,6 @@ white_alone <- acs[variable == 'white_alone']
 apc[, variable := NULL]
 
 # get population
-names(apc)
 apc <- white_alone[, c('estimate', 'GEOID')][apc, on  = 'GEOID']
 setnames(apc, 'estimate', 'white_alone')
 
@@ -122,7 +121,7 @@ ggplot(apc, aes(x = log(perc_white_alone), y = log(avg_act_per_capita))) +
 
 # Models
 
-The idea at this point is to start with some simple linear regressions, then introduce explicit spatial methods, and then introduce time. This document is the starting point. 
+The idea at this point is to start with some simple linear regressions, then introduce explicit spatial methods, and then introduce time. This document is the starting point with linear regressions. 
 
 ## Ridership ~ white alone
 Since this model is so simple, I'm going to write the stan code within R below. 
@@ -133,7 +132,6 @@ race_dat1 <- left_join(bgs, apc, by = 'GEOID')
 setDT(race_dat1)
 
 # bottom code
-race_dat1[is.na(avg_act_per_capita) | avg_act_per_capita == 0 | is.infinite(avg_act_per_capita), avg_act_per_capita := 0.01]
 race_dat1[is.na(perc_white_alone) | perc_white_alone == 0 | is.infinite(perc_white_alone), perc_white_alone := 0.01]
 
 race_dat <- list(N = length(race_dat1$avg_act_per_capita),
@@ -175,7 +173,7 @@ race_posterior <- extract(race_fit)
 I think I need to know more about evaluating models once I've fit them. I'm not quite sure what to make of n_eff being greater than the iterations. 
 
 Trying unlogged predictor: 
-```{r}
+```{r results = 'hide'}
 race_dat2 <- list(N = length(race_dat1$avg_act_per_capita),
                  y = log(as.numeric(race_dat1$avg_act_per_capita)),
                  x = as.numeric(race_dat1$perc_white_alone))
@@ -184,3 +182,237 @@ racefit2 <- stan(model_code = race_mod, data = race_dat2, iter = 1000)
 summary(racefit2)
 ```
 
+Takes the same amount of time and produces similar estimates, n_eff is lower than iter now. 
+
+### Median income
+
+I think assuming a linear relationship between median income & ridership is less of a stretch. 
+```{r}
+med_inc <- acs[variable == 'median_hh_income']
+
+apc[, variable := NULL]
+
+# get population
+apc <- med_inc[, c('estimate', 'GEOID')][apc, on  = 'GEOID']
+setnames(apc, 'estimate', 'med_inc')
+
+
+ggplot(apc, aes(x=med_inc)) +
+  geom_density() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Percent "white alone", 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = med_inc, y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'median income vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = log(med_inc), y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'log median income vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# prepare the data for stan
+inc_dat1 <- left_join(bgs, apc, by = 'GEOID')
+setDT(inc_dat1)
+
+# bottom code
+inc_dat1[is.na(med_inc) | med_inc == 0 | is.infinite(med_inc), med_inc := 0.01]
+
+inc_dat <- list(N = length(inc_dat1$avg_act_per_capita),
+                 y = log(as.numeric(inc_dat1$avg_act_per_capita)),
+                 x = log(as.numeric(inc_dat1$med_inc)))
+```
+
+```{r results = 'hide'}
+# write stan model 
+inc_mod = "
+data {
+ int < lower = 1 > N; // Sample size
+ vector[N] x; // Predictor
+ vector[N] y; // Outcome
+}
+
+parameters {
+ real alpha; // Intercept
+ real beta; // Slope (regression coefficients)
+ real < lower = 0 > sigma; // Error SD
+}
+
+model {
+ y ~ normal(alpha + x * beta , sigma);
+}
+
+"
+# run!
+# set verbose = TRUE for debugging
+inc_fit <- stan(model_code = inc_mod, data = inc_dat, iter = 1000, verbose = FALSE)
+```
+
+```{r}
+summary(inc_fit)
+```
+
+Unlogged predictor:
+```{r results = 'hide', eval = FALSE}
+inc_dat2 <- list(N = length(inc_dat1$avg_act_per_capita),
+                 y = log(as.numeric(inc_dat1$avg_act_per_capita)),
+                 x = as.numeric(inc_dat1$med_inc))
+
+inc_fit2 <- stan(model_code = inc_mod, data = inc_dat2, iter = 1000, verbose = FALSE)
+```
+
+So here the unlogged predictor took waaaay more time & has huge Rhat, mean_se, etc. 
+
+## Median Age
+
+Metro Transit ridership is really skewed towards riders under 35. Median age is a good start but we wondered about using percent of population under 35 (or wherever the census age group breaks).
+```{r}
+med_age <- acs[variable == 'median_age']
+
+apc[, variable := NULL]
+
+# get population
+apc <- med_age[, c('estimate', 'GEOID')][apc, on  = 'GEOID']
+setnames(apc, 'estimate', 'med_age')
+
+
+ggplot(apc, aes(x=med_age)) +
+  geom_density() + 
+  theme_minimal() +
+  labs(x = 'activity', y = 'count', title = 'Median age 2017') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = med_age, y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'median age vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(apc, aes(x = log(med_age), y = log(avg_act_per_capita))) +
+  geom_point() + geom_smooth() +
+  theme_minimal() +
+  labs(title = 'log median age vs log average activity per capita') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+# prepare the data for stan
+age_dat1 <- left_join(bgs, apc, by = 'GEOID')
+setDT(age_dat1)
+
+# bottom code
+age_dat1[is.na(med_age) | med_age == 0 | is.infinite(med_age), med_age := 0.01]
+
+age_dat <- list(N = length(age_dat1$avg_act_per_capita),
+                 y = log(as.numeric(age_dat1$avg_act_per_capita)),
+                 x = log(as.numeric(age_dat1$med_age)))
+```
+
+```{r results = 'hide'}
+# write stan model 
+age_mod = "
+data {
+ int < lower = 1 > N; // Sample size
+ vector[N] x; // Predictor
+ vector[N] y; // Outcome
+}
+
+parameters {
+ real alpha; // Intercept
+ real beta; // Slope (regression coefficients)
+ real < lower = 0 > sigma; // Error SD
+}
+
+model {
+ y ~ normal(alpha + x * beta , sigma);
+}
+
+"
+# run!
+# set verbose = TRUE for debugging
+age_fit <- stan(model_code = age_mod, data = age_dat, iter = 1000, verbose = FALSE)
+```
+```{r}
+summary(age_fit)
+```
+
+# Multiple terms ooh la la
+
+```{r}
+age_dat1 <- na.omit(age_dat1)
+inc_dat1 <- na.omit(inc_dat1)
+race_dat1 <- na.omit(race_dat1)
+
+View(apc_mod)
+
+
+apc_mod <- na.omit(apc)
+apc_mod[log(avg_act_per_capita) == '-Inf', avg_act_per_capita := NA]
+apc_mod[log(med_age) == '-Inf', med_age := NA]
+apc_mod[log(med_inc) == '-Inf', med_inc := NA]
+apc_mod[log(perc_white_alone) == '-Inf', perc_white_alone := NA]
+apc_mod <- na.omit(apc_mod)
+# definitely a better way to do that
+
+
+mod_dat <- list(N = length(apc_mod$avg_act_per_capita),
+                y = log(as.numeric(apc_mod$avg_act_per_capita)),
+                x1 = log(as.numeric(apc_mod$med_age)),
+                x2 = log(as.numeric(apc_mod$med_inc)),
+                x3 = log(as.numeric(apc_mod$perc_white_alone)))
+
+mod_dat
+```
+
+```{r results = 'hide'}
+mod_code = "
+data {
+ int < lower = 1 > N; // Sample size
+ vector[N] x1; // Predictor
+ vector[N] x2;
+ vector[N] x3;
+ vector[N] y; // Outcome
+}
+
+parameters {
+ real alpha; // Intercept
+ real beta1; // Slope (regression coefficients) 
+ real beta2;
+ real beta3;
+ real < lower = 0 > sigma; // Error SD
+}
+
+model {
+ y ~ normal(alpha + x1 * beta1 + x2 * beta2 + x3 * beta3, sigma);
+}
+
+generated quantities {
+// this lets us use ppCheck in shinystan
+  vector[N] y_rep ; // vector of same length as the data y
+  for (n in 1:N) 
+    y_rep[n] = normal_rng(alpha + x1[n]*beta1 + x2[n]*beta2 + x3[n]*beta3, sigma) ;
+}
+
+"
+
+fit <- stan(model_code = mod_code, data = mod_dat, iter = 1000, verbose = FALSE)
+```
+
+```{r}
+summary(fit)
+response <- mod_dat$y
+launch_shinystan(fit)
+
+fit
+
+#Use bayesplot
+```
+
+Ah! One big issues is that the "bottom coded" (previously na) values take over the distribution. I knew this already but I need to re-fit excluding places with no ridership. 
