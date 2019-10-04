@@ -34,7 +34,7 @@ This document will explore some of **the most** basic models for ridership. I'll
 Here is a distribution of the repsonse variable: 
 ```{r}
 # not the ideal way to read in data
-apc <- readRDS('/Users/raven/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
+apc <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
 setDT(apc)
 
 # restrict to 2017
@@ -44,14 +44,14 @@ apc <- apc[date_key %like% 2017]
 apc <- apc[, .(avg_activity = mean(ag_board + ag_alight)), by = GEOID]
 
 # join to acs population
-acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
+acs <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
 setDT(acs)
 acs <- acs[year == 3]
-
-apc <- acs[variable =='tot_pop'][apc, on = 'GEOID']
+acs
+apc <- acs[apc, on = 'GEOID']
 
 # this is our response variable for modeling at this point. 
-apc <- apc[, .(avg_act_per_capita = mean(avg_activity/estimate), tot_pop = estimate), by = 'GEOID']
+apc <- apc[, .(avg_act_per_capita = mean(avg_activity/estimate_tot_pop)), by = 'GEOID']
 
 ggplot(apc, aes(x=avg_act_per_capita)) +
   geom_histogram() + 

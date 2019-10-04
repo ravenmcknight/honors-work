@@ -1,0 +1,62 @@
+---
+title: "Distribution Fitting"
+author: "Raven McKnight"
+date: "9/30/2019"
+output: 
+  html_document:
+    theme: paper
+    code_folding: hide
+---
+
+Goal: determine "best" distribution for response variable. 
+
+```{r}
+# Goal: get census variables of interest, 2015-2017
+
+## packages -----------------------------------------------
+
+packages <- c('data.table', 'fitdistrplus', 'ggplot2')
+
+miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
+
+if(length(miss_pkgs) > 0){
+  install.packages(miss_pkgs)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+rm(miss_pkgs, packages)
+
+## data ---------------------------------------------------
+apc <- readRDS('data/mt-data/apc-bg-ag-sum.RDS')
+setDT(apc)
+apc <- apc[date_key %like% 2017, .(avg_activity = mean(ag_board + ag_alight)), by = GEOID]
+
+acs <- readRDS('data/covariates/basic_acs.RDS')
+setDT(acs)
+acs <- acs[year == 3]
+
+apc <- acs[apc, on = 'GEOID']
+apc[, avg_activity_per_capita := avg_activity/estimate_tot_pop]
+apc[, log_avg_act := log(avg_activity_per_capita)]
+
+# this should be the working data for a while
+saveRDS(apc, 'data/mt-data/ag-modeling-data.RDS')
+```
+
+First, let's just look at the distribution. 
+```{r}
+apc <- apc[!log_avg_act == '-Inf']
+
+ggplot(apc, aes(x = log_avg_act)) +
+  geom_histogram() +
+  theme_minimal() +
+  labs(title = 'log distribution of response') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Looks closest to lognormal. 
+```{r}
+descdist(apc$log_avg_act, discrete = FALSE)
+```
+
