@@ -228,6 +228,7 @@ for(i in 1:3){
 }
 
 # restrict to metro area
+options(tigris_use_cache = FALSE)
 bgs <- block_groups('MN', counties, year = 2016)
 
 for(i in 1:3){
@@ -241,3 +242,52 @@ saveRDS(l[[3]], 'data/covariates/rac/rac-2015.RDS')
 # oh duh should just save the whole thing
 rac <- rbindlist(l)
 saveRDS(rac, 'data/covariates/rac/all-rac.RDS')
+
+# and maybe even better is wac...
+wac_urls <- c('https://lehd.ces.census.gov/data/lodes/LODES7/mn/wac/mn_wac_S000_JT00_2017.csv.gz',
+              'https://lehd.ces.census.gov/data/lodes/LODES7/mn/wac/mn_wac_S000_JT00_2016.csv.gz',
+              'https://lehd.ces.census.gov/data/lodes/LODES7/mn/wac/mn_wac_S000_JT00_2015.csv.gz')
+
+for(i in 1:length(years)){
+  download.file(wac_urls[i], paste0('data/covariates/wac/mn_wac_', years[i], '.csv.gz'))
+}
+
+wac_files <- list.files(path = 'data/covariates/wac/')
+l <- lapply(paste0('data/covariates/wac/', wac_files), fread)
+
+l[[1]]$year <- 2017
+l[[2]]$year <- 2016
+l[[3]]$year <- 2015
+
+
+# i think i'll mostly be interested in total number of jobs
+# too lazy to give better names rn
+
+# aggregate blocks to bgs
+
+for(i in 1:3){
+  l[[i]][, GEOID := substr(w_geocode, 1, 12)]
+}
+
+for(i in 1:3){
+  l[[i]]$createdate <- NULL
+  l[[i]] <- l[[i]][, lapply(.SD, sum, na.rm=TRUE), by= c('GEOID', 'year')]
+}
+
+# restrict to metro area
+options(tigris_use_cache = FALSE)
+bgs <- block_groups('MN', counties, year = 2016)
+
+for(i in 1:3){
+  l[[i]] <- l[[i]][GEOID %in% bgs$GEOID]
+  setnames(l[[i]], 'C000', 'total_jobs_here')
+}
+
+saveRDS(l[[1]], 'data/covariates/wac/wac-2017.RDS')
+saveRDS(l[[2]], 'data/covariates/wac/wac-2016.RDS')
+saveRDS(l[[3]], 'data/covariates/wac/wac-2015.RDS')
+
+# oh duh should just save the whole thing
+wac <- rbindlist(l)
+saveRDS(wac, 'data/covariates/wac/all-wac.RDS')
+
