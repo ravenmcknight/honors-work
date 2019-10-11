@@ -249,7 +249,7 @@ wac_urls <- c('https://lehd.ces.census.gov/data/lodes/LODES7/mn/wac/mn_wac_S000_
               'https://lehd.ces.census.gov/data/lodes/LODES7/mn/wac/mn_wac_S000_JT00_2015.csv.gz')
 
 for(i in 1:length(years)){
-  download.file(wac_urls[i], paste0('data/covariates/wac/mn_wac_', years[i], '.csv.gz'))
+  download.file(wac_urls[i], paste0('data/covariates/wac/mn_wac', years[i], '.csv.gz'))
 }
 
 wac_files <- list.files(path = 'data/covariates/wac/')

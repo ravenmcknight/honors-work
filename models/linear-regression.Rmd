@@ -8,7 +8,6 @@ output:
     toc_float: true
     theme: paper
     code_folding: hide
-
 ---
 
 ```{r setup, include=FALSE}
@@ -33,15 +32,15 @@ options(tigris_class = 'sf')
 
 The response variable for this stage of modeling is **average daily boardings + alightings per capita in 2017 by block group**. Later, we can incorporate time in two ways: by using averages across years *and* by using actual counts by day. The log distribution of the response is below. 
 ```{r}
-# mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag-modeling-data.RDS')
+# mod_dat <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/ag-modeling-data.RDS')
 # mod_dat[, tract_GEOID := substr(GEOID, 1, 11)]
 # 
 # # add more recent covariates
-# educ <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/education.RDS')
-# house_veh <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/housing-and-vehicles.RDS')
-# language <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/language.RDS')
-# nativity <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/nativity.RDS')
-# employment <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/wac/wac-2017.RDS')
+# educ <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/education.RDS')
+# house_veh <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/housing-and-vehicles.RDS')
+# language <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/language.RDS')
+# nativity <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/nativity.RDS')
+# employment <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/covariates/wac/wac-2017.RDS')
 # setDT(educ)
 # setDT(house_veh)
 # setDT(language)
@@ -66,9 +65,9 @@ The response variable for this stage of modeling is **average daily boardings + 
 # mod_dat <- bgs[, c('GEOID', 'ALAND')][mod_dat, on = 'GEOID']
 # mod_dat[, sqkm := ALAND/1000000]
 # mod_dat[, emp_density := total_jobs_here/sqkm]
-
-# saveRDS(mod_dat, '/Users/raven/Documents/honors/honors-work/data/ag-modeling-data.RDS')
-mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag-modeling-data.RDS')
+# 
+# saveRDS(mod_dat, '/Users/mcknigri/Documents/honors/honors-work/data/ag-modeling-data.RDS')
+mod_dat <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/ag-modeling-data.RDS')
 mod_dat <- mod_dat[!is.na(emp_density) & !is.na(perc_no_veh) & !log_avg_act == -Inf]
 response <- mod_dat$log_avg_act
 
@@ -163,7 +162,7 @@ Here's the distribution of ridership vs 50 posterior draws.
 ```{r}
 tma_fit <- readRDS('fits/tma_fit.RDS')
 response <- mod_dat$log_avg_act
-#launch_shinystan(tma_fit)
+launch_shinystan(tma_fit)
 
 posterior <- extract(tma_fit)
 yrep <- posterior$y_rep
