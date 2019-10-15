@@ -54,4 +54,16 @@ mod_dat[, tract_GEOID := substr(GEOID, 1, 11)]
 mod_dat <- mod_dat[nativity[year == 3, c('tract_GEOID', 'perc_native', 'perc_foreign')], on = 'tract_GEOID']
 mod_dat <- mod_dat[employment[, c('GEOID', 'total_jobs_here')], on = 'GEOID']
 
+counties <- c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
+bgs <- block_groups("MN", counties, 2016)
+
+mod_dat <- left_join(bgs, mod_dat, on = 'GEOID')
+setDT(mod_dat)
+
+mod_dat[, sqkm := ALAND/1000000]
+mod_dat[, emp_density := total_jobs_here/sqkm]
+mod_dat[, log_avg_act := log(avg_act_per_capita)]
+mod_dat[, c('STATEFP', 'COUNTYFP', 'TRACTCE', 'BLKGRPCE', 'NAMELSAD', 'MTFCC', 'FUNCSTAT', 
+            'ALAND', 'AWATER', 'INTPTLAT', 'INTPTLON', 'NAME', 'geometry') := NULL]
+
 saveRDS(mod_dat, 'data/ag-2017-mod-dat.RDS')
