@@ -175,6 +175,7 @@ The assumption above that $y$ is normal is clearly not working out.
 ### Same model but skew-normal
 
 ```{r eval = FALSE}
+set.seed(1115)
 skew_tma_code = "
 data {
  int < lower = 1 > N; // Sample size
@@ -205,13 +206,13 @@ generated quantities {
 "
 
 # Fit model
-skew_tma_fit <- stan(model_code = skew_tma_code, data = tma_dat, iter = 1000, verbose = FALSE)
+skew_tma_fit <- stan(model_code = skew_tma_code, data = tma_dat, iter = 1000, verbose = TRUE)
 #saveRDS(skew_tma_fit, 'fits/skew_tma_fit.RDS')
 ```
 
 ```{r}
 # try different seed
-launch_shinystan(skew_tma_fit)
+#launch_shinystan(skew_tma_fit)
 skew_tma_fit <- readRDS('fits/skew_tma_fit.RDS')
 skew_tma_fit
 
