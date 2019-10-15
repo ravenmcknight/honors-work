@@ -25,16 +25,13 @@ invisible(lapply(packages, library, character.only = TRUE))
 
 rm(miss_pkgs, packages)
 
-mod_dat <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/ag-modeling-data.RDS')
-mod_dat <- mod_dat[!is.na(emp_density) & !is.na(perc_no_veh) & !log_avg_act == -Inf]
+mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag-2017-mod-dat.RDS')
 
 options(tigris_class = 'sf')
 counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
 bgs <- block_groups('MN', counties, 2016)
 
 spatial_mod_dat <- left_join(bgs, mod_dat, on = 'GEOID')
-spatial_mod_dat <- spatial_mod_dat %>%
-  filter(!is.na(estimate_median_hh_income))
 ```
 
 
@@ -74,7 +71,7 @@ Because of the constraints on which distirbutions are allowed, I'll try to fit a
 ```{r}
 # Round response to integer (this will be less problematic once not working with averages)
 spatial_mod_dat <- spatial_mod_dat %>%
-  mutate(zip_response = as.integer(avg_activity_per_capita))
+  mutate(zip_response = as.integer(avg_act_per_capita))
 
 ggplot(spatial_mod_dat, aes(x=zip_response)) +
   geom_histogram(bins = 12) +
@@ -86,17 +83,31 @@ ggplot(spatial_mod_dat) +
   geom_sf() + theme_minimal()
 ```
 
-I'll start by fitting a model with only one predictor, median household income. The ZIP model additionally requires a formula specifying the covariates in the logistic regression which  models the probability of an observation being a "structural 0" (basically, this is calling for covariates from the underlying model that cause there to be so many zeros in a ZIP distribution). I'm going to try using the number of bus stops in a block group for that term.  
-```{r}
+I'll start by fitting a model with only one predictor, median household income. The ZIP model additionally requires a formula specifying the covariates in the logistic regression which  models the probability of an observation being a "structural 0" (basically, this is calling for covariates from the underlying model that cause there to be so many zeros in a ZIP distribution). I'm going to try using the number of bus stops in a block group for that term. First, let's see if I can even get a Poisson to run:
+```{r eval = FALSE}
+# can't have NAs in response
+hh_dat <- spatial_mod_dat %>% 
+  filter(!is.na(estimate_median_hh_income))
+
 # Create neighborhood matrix
-W <- poly2nb(spatial_mod_dat, row.names = 'GEOID', queen = TRUE)  # neighbors
-W2 <- nb2mat(W, style = 'B', zero.policy = TRUE)   # matrix
+W <- poly2nb(hh_dat, row.names = 'GEOID', queen = TRUE)  # neighbors
+W2 <- nb2mat(W, style = 'B')   # matrix
 
 # Equation
 hh_eq <- zip_response ~ estimate_median_hh_income
 
 # Fit the model
-bym1 <- S.CARbym(formula = hh_eq, data = spatial_mod_dat, family = "poisson", W = W2,
+bym1 <- S.CARbym(formula = hh_eq, data = hh_dat, family = "poisson", W = W2,
                  burnin=100000, n.sample=500000, thin=10, verbose = TRUE)
+```
+
+It fit!
+
+veryyyy poorly....
+```{r}
+#saveRDS(bym1, 'fits/bym1.RDS')
+
+print(bym1)
+posterior <- fitted(bym1)
 ```
 
