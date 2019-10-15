@@ -1,0 +1,102 @@
+---
+title: "Fitting Models with CARBayes"
+author: "Raven McKnight"
+date: "10/15/2019"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+I expect to use Stan to fit models by the end of this project but I'll start by fitting some models using `CARBayes` and `CARBayesST`. 
+
+```{r warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = 'hide', warning = FALSE, message = FALSE)
+packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr', 'CARBayes', 'spdep')
+
+miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
+
+if(length(miss_pkgs) > 0){
+  install.packages(miss_pkgs)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+rm(miss_pkgs, packages)
+
+mod_dat <- readRDS('/Users/mcknigri/Documents/honors/honors-work/data/ag-modeling-data.RDS')
+mod_dat <- mod_dat[!is.na(emp_density) & !is.na(perc_no_veh) & !log_avg_act == -Inf]
+
+options(tigris_class = 'sf')
+counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
+bgs <- block_groups('MN', counties, 2016)
+
+spatial_mod_dat <- left_join(bgs, mod_dat, on = 'GEOID')
+spatial_mod_dat <- spatial_mod_dat %>%
+  filter(!is.na(estimate_median_hh_income))
+```
+
+
+## The BYM Model
+
+The Besag-York-Mollie Model is one of the most basic spatial conditional autoregressive models so we'll start there. It is a *lognormal Poisson* originally intended for disease mapping. It includes a spatial Intrinsic Conditional Autogregressive term as well as random effects. In general, the model is specified as follows: 
+
+$$ 
+\begin{align}
+\eta _i &= \mu + x \beta + \phi + \theta \\
+\\
+\eta_i &= \text{log relative risk for zone } i \\
+\mu &= \text{the overall risk, ie the intercept} \\
+x &= \text{matrix of explanatory spatial covariates} \\
+\beta &= \text{coefficients for x which are constant across space (fixed effects)} \\
+\phi &= \text{the spatial intrinsic conditional autoregressive component} \\
+\theta &= \text{random effects for non-spatial heterogeneity}
+\end{align}
+$$
+
+The `CARBayes` package allows the BYM model to be fit with a binomial, Poisson, or zero-inflated Poisson response variable. `CARBayes` fits the model as follows: 
+
+$$
+\begin{align}
+\psi_k &= \phi_{k} + \theta_k\\
+\phi_{k}| {\phi}_{-k}, W,\tau^2 &\sim \mbox{N}\left(\frac{\sum_{i=1}^{K}w_{ki}\phi_{i}}{\sum_{i=1}^{K}w_{ki}},~
+\frac{\tau^{2}}{\sum_{i=1}^{K}w_{ki}}) \\
+\theta_k &\sim \mbox{N}(0, \sigma^2) \\
+\tau^{2}, \sigma^2 &\sim \mbox{Inverse-Gamma}(a, b)
+\end{align}
+$$
+
+
+where $\theta$ is independent with mean 0 and constant variance and $\phi$ is spatial autocorrelation. Note that the variance of $\phi$ is inversely proportional to the number of neighbors region $i$ has ("borrowing strength"). **My understanding** is that the `CarBAYES` function by default includes no covariates -- this is why it's missing the $\mu + x\beta$ terms from above.  
+
+Because of the constraints on which distirbutions are allowed, I'll try to fit a ZIP distribution to the unlogged average daily activity per capita (below). The averages are rounded to integers in this case to meet the requirements for Poisson fit. 
+```{r}
+# Round response to integer (this will be less problematic once not working with averages)
+spatial_mod_dat <- spatial_mod_dat %>%
+  mutate(zip_response = as.integer(avg_activity_per_capita))
+
+ggplot(spatial_mod_dat, aes(x=zip_response)) +
+  geom_histogram(bins = 12) +
+  theme_minimal() +
+  labs(title = 'Average daily boardings + alightings per capita', x = 'boardings + alightings') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(spatial_mod_dat) +
+  geom_sf() + theme_minimal()
+```
+
+I'll start by fitting a model with only one predictor, median household income. The ZIP model additionally requires a formula specifying the covariates in the logistic regression which  models the probability of an observation being a "structural 0" (basically, this is calling for covariates from the underlying model that cause there to be so many zeros in a ZIP distribution). I'm going to try using the number of bus stops in a block group for that term.  
+```{r}
+# Create neighborhood matrix
+W <- poly2nb(spatial_mod_dat, row.names = 'GEOID', queen = TRUE)  # neighbors
+W2 <- nb2mat(W, style = 'B', zero.policy = TRUE)   # matrix
+
+# Equation
+hh_eq <- zip_response ~ estimate_median_hh_income
+
+# Fit the model
+bym1 <- S.CARbym(formula = hh_eq, data = spatial_mod_dat, family = "poisson", W = W2,
+                 burnin=100000, n.sample=500000, thin=10, verbose = TRUE)
+```
+
