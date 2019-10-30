@@ -1,0 +1,151 @@
+---
+title: "basics"
+author: "Raven McKnight"
+date: "10/15/2019"
+output: 
+  html_document:
+    theme: paper
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = 'hide', warning = FALSE, message = FALSE)
+packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr', 
+              'CARBayes', 'spdep', 'corrplot', 'reshape2')
+
+miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
+
+if(length(miss_pkgs) > 0){
+  install.packages(miss_pkgs)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+rm(miss_pkgs, packages)
+
+mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag-2017-mod-dat.RDS')
+setDT(mod_dat)
+
+options(tigris_class = 'sf')
+counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
+bgs <- block_groups('MN', counties, 2016)
+
+spatdat <- left_join(bgs, mod_dat, on = 'GEOID')
+```
+
+# Correlation
+```{r}
+small_dat <- mod_dat[, c("estimate_median_age", "estimate_tot_pop", "estimate_median_hh_income", "perc_only_white",
+                         "perc_hs", "perc_bach", "perc_rent", "perc_no_veh", "perc_english_only", "perc_foreign",
+                         "emp_density", "avg_act_per_capita", "log_avg_act", "avg_trips")]
+
+toscale <- small_dat[is.finite(log_avg_act) & !is.na(log_avg_act)]
+scaled_dat <- scale(toscale)
+scaled_dat <- as.data.frame(scaled_dat)
+
+cor_matrix <- round(cor(x=scaled_dat, use = 'pairwise.complete.obs', method = 'pearson'), 2)
+cor_melt <- melt(cor_matrix)
+
+ggplot(cor_melt, aes(x=Var1, y=Var2, fill=abs(value))) + 
+    geom_tile() + 
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+Obviously employment density overpowers all the other variables here. The only others that stick out are percent renting and percent without a vehicle. 
+
+# Variables
+```{r}
+df <-melt(scaled_dat, id=c("log_avg_act")) 
+
+ggplot(df, aes(x=value, y=log_avg_act)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth() +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal()
+```
+
+Not surprising: Empoyment density has the highest positive relationship (easier to see if we look beyond the few outliers). Maybe surprising: small effect of high school education, high effect of precent renting. 
+
+# Spatial clustering?
+
+I expect the Moran's I to be relatively low because it tests for *clustering* and our spatial structure here is more linear. There are ways to detect that but I'm not sure how pertinent it is. 
+
+```{r}
+spat_moran_dat <- left_join(bgs, scaled_dat, by = 'GEOID')
+
+W <- poly2nb(spat_moran_dat)
+W_list <- nb2listw(W, style = "B")
+
+moran.mc(x = na.omit(spat_moran_dat$log_avg_act), listw = W_list, nsim = 1000, zero.policy = TRUE)
+```
+
+As expected, slight-moderate spatial clustering. 
+
+# Linear models
+
+```{r}
+mod1 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh, data = scaled_dat)
+summary(mod1)
+```
+
+P-values will always be low like this until we incorporate **level of service** predictors. The most basic is number of trips per day, although this is super flawed!!
+
+```{r}
+mod2 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh + avg_trips, data = scaled_dat)
+summary(mod2)
+```
+
+Hmm... that did less than I expected in terms of $R^2$. For fun, all in:
+
+```{r}
+mod3 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh + estimate_median_hh_income +
+           perc_only_white + perc_bach + perc_english_only + perc_foreign + avg_trips + 
+           estimate_median_age + estimate_tot_pop,
+           data = scaled_dat)
+summary(mod3)
+```
+Oh boy. I think the missing pieces are more level of service measures, like walkability or a "total density" measure. 
+
+Different response: 
+```{r}
+mod4 <- lm(avg_act_per_capita ~ emp_density + perc_rent + perc_no_veh + estimate_median_hh_income +
+           perc_only_white + perc_bach + perc_english_only + perc_foreign + avg_trips + 
+           estimate_median_age + estimate_tot_pop,
+           data = scaled_dat)
+summary(mod4)
+```
+
+Interesting. 
+
+```{r}
+mod5 <- lm(avg_act_per_capita ~ emp_density + estimate_median_hh_income +
+           perc_bach  + avg_trips + estimate_tot_pop,
+           data = scaled_dat)
+summary(mod5)
+```
+
+# Spatial residuals
+
+Going to run with model 2 for now. 
+```{r}
+summary(mod2)
+```
+
+Let's check the spatial dependence in the residuals. 
+
+```{r}
+resids <- residuals(mod2)
+moran.mc(x = resids, listw = W_list, nsim = 1000, zero.policy = TRUE)
+```
+
+
+
+resids <- residuals(lin1)
+
+length(resids)
+dim(W_list)
+W_list
+
+moran.mc(x=resids, listw = W_list, nsim = 1000, zero.policy = TRUE)
