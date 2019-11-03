@@ -86,7 +86,7 @@ small_dat <- mod_dat[, c("GEOID", "avg_act_per_capita", "avg_trips", "estimate_m
                          "perc_hs", "perc_bach", "perc_rent", "perc_no_veh", "perc_english_only", "perc_foreign",
                          "emp_density", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                          "perc_jobs_less40", "perc_jobs_age_less30", "w_total_jobs_here", "w_perc_jobs_white", 
-                         "w_perc_jobs_men", "w_perc_jobs_no_college", "w_perc_jobs_less40", "perc_jobs_age_less30", 
+                         "w_perc_jobs_men", "w_perc_jobs_no_college", "w_perc_jobs_less40", "w_perc_jobs_age_less30", 
                          "sqkm", "estimate_tot_pop", "estimate_median_age")]
 setDT(small_dat)
 
