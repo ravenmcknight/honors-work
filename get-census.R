@@ -244,6 +244,7 @@ rac[, perc_jobs_white := white_alone/tot_jobs]
 rac[, perc_jobs_men := male/tot_jobs]
 rac[, perc_jobs_no_college := hs/tot_jobs]
 rac[, perc_jobs_less40 := (wage_1250 + wage_1250_3333)/tot_jobs]
+rac[, perc_jobs_age_less30 := age_29/tot_jobs]
 
 saveRDS(rac, 'data/covariates/rac/all-rac.RDS')
 
@@ -302,6 +303,7 @@ wac[, w_perc_jobs_white := w_white/w_total_jobs_here]
 wac[, w_perc_jobs_men := w_male/w_total_jobs_here]
 wac[, w_perc_jobs_no_college := w_hs/w_total_jobs_here]
 wac[, w_perc_jobs_less40 := (w_wage_1250 + w_wage_1250_3333)/w_total_jobs_here]
+wac[, w_perc_jobs_age_less30 := w_age_29/w_total_jobs_here]
 
 saveRDS(wac, 'data/covariates/wac/all-wac.RDS')
 
