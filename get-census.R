@@ -235,12 +235,16 @@ for(i in 1:3){
   l[[i]] <- l[[i]][GEOID %in% bgs$GEOID]
 }
 
-saveRDS(l[[1]], 'data/covariates/rac/rac-2017.RDS')
-saveRDS(l[[2]], 'data/covariates/rac/rac-2016.RDS')
-saveRDS(l[[3]], 'data/covariates/rac/rac-2015.RDS')
-
-# oh duh should just save the whole thing
+# idk why i didn't do this sooner
 rac <- rbindlist(l)
+setDT(rac)
+
+# calculate the variables i wanna try
+rac[, perc_jobs_white := white_alone/tot_jobs]
+rac[, perc_jobs_men := male/tot_jobs]
+rac[, perc_jobs_no_college := hs/tot_jobs]
+rac[, perc_jobs_less40 := (wage_1250 + wage_1250_3333)/tot_jobs]
+
 saveRDS(rac, 'data/covariates/rac/all-rac.RDS')
 
 # and maybe even better is wac...
@@ -280,14 +284,24 @@ bgs <- block_groups('MN', counties, year = 2016)
 
 for(i in 1:3){
   l[[i]] <- l[[i]][GEOID %in% bgs$GEOID]
-  setnames(l[[i]], 'C000', 'total_jobs_here')
+  colnames(l[[i]]) <- c('GEOID', 'year', 'w_geocode', 'w_total_jobs_here', 'w_age_29', 'w_age_30_54', 'w_age_55', 
+                        'w_wage_1250', 'w_wage_1250_3333', 'w_wage_3333', 'w_ag', 'w_mine', 'w_util',
+                        'w_construction', 'w_manuf', 'w_wholesale', 'w_retail', 'w_transp', 'w_info',
+                        'w_finance', 'w_real_estate', 'w_prof', 'w_management', 'w_admin', 'w_educ',
+                        'w_health', 'w_art', 'w_accom', 'w_other', 'w_pub', 'w_white', 'w_black', 
+                        'w_amind', 'w_asian', 'w_native', 'w_two_or_more', 'w_not_hisp', 'w_hisp',
+                        'w_less_hs', 'w_hs', 'w_some_college', 'w_degree', 'w_male', 'w_female', 
+                        'w_firm1', 'w_firm3', 'w_firm5', 'w_firm10', 'w_firm11', 'w_size19',
+                        'w_firm49', 'w_firm249', 'w_firm499', 'w_firm500')
 }
 
-saveRDS(l[[1]], 'data/covariates/wac/wac-2017.RDS')
-saveRDS(l[[2]], 'data/covariates/wac/wac-2016.RDS')
-saveRDS(l[[3]], 'data/covariates/wac/wac-2015.RDS')
-
-# oh duh should just save the whole thing
 wac <- rbindlist(l)
+setDT(wac)
+
+wac[, w_perc_jobs_white := w_white/w_total_jobs_here]
+wac[, w_perc_jobs_men := w_male/w_total_jobs_here]
+wac[, w_perc_jobs_no_college := w_hs/w_total_jobs_here]
+wac[, w_perc_jobs_less40 := (w_wage_1250 + w_wage_1250_3333)/w_total_jobs_here]
+
 saveRDS(wac, 'data/covariates/wac/all-wac.RDS')
 
