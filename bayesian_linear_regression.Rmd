@@ -1,0 +1,93 @@
+---
+title: "Bayesian Linear Regression"
+author: "Raven McKnight"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: paper
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, results = 'hide', warning = FALSE, message = FALSE)
+packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr', 'shinystan')
+
+miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
+
+if(length(miss_pkgs) > 0){
+  install.packages(miss_pkgs)
+}
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+rm(miss_pkgs, packages)
+rstan_options(auto_write = TRUE)
+
+options(tigris_class = 'sf')
+
+mod_dat <- readRDS('data/ag_2017_scaled_mod.RDS')
+response <- mod_dat$avg_act_per_capita
+```
+
+# Simplest Bayesian Linear Regression
+
+Fitting a super simple model first to make sure things are working:
+
+$$
+\begin{align}
+y &= \text{average daily boardings and alightings by block group, 2017} \\
+x &= \text {average daily bus trips through block group, 2017} \\
+\\
+y &\sim \text{N}(\alpha + \beta x, \sigma)
+\end{align}
+$$
+
+Since these models are so simple, I'll keep the stan code inline for now.
+
+```{r}
+stan_dat1 <- list(N = length(mod_dat$avg_act_per_capita),
+                 y = mod_dat$avg_act_per_capita,
+                 x = mod_dat$avg_trips)
+
+mod1_code = "
+data {
+  int <lower = 1> N; //sample size
+  vector[N] x; //predictor
+  vector[N] y; //outcome
+}
+
+parameters {
+  real alpha; //intercept
+  real beta; //slope
+  real <lower = 0> sigma; //sd
+}
+
+model {
+  y ~ normal(alpha + x * beta, sigma);
+}
+
+generated quantities{
+  vector[N] y_rep; 
+  for (n in 1:N)
+    y_rep[n] = normal_rng(alpha + x[n]*beta, sigma);
+}
+
+"
+
+fit1 <- stan(model_code = mod1_code, data = stan_dat1, iter = 1000, verbose = FALSE)
+```
+```{r}
+#launch_shinystan(fit1)
+
+posterior <- extract(fit1)
+yrep <- posterior$y_rep
+yrep <- yrep[sample(nrow(yrep), 50), ]
+attributes(response) <- NULL
+
+pp_check(response, yrep, ppc_dens_overlay) + theme_minimal()
+```
+
+So we're understimating the tiiiiiny second mode, overestimating for a bit, and doing pretty well on the RHS. 
+
+# 
