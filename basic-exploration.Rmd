@@ -11,9 +11,9 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, results = 'hide', warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 packages <- c('data.table', 'rstan', 'ggplot2', 'bayesplot', 'tigris', 'sf', 'dplyr', 
-              'CARBayes', 'spdep', 'corrplot', 'reshape2')
+              'CARBayes', 'spdep', 'corrplot', 'reshape2', 'scales', 'leaps')
 
 miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
 
@@ -25,7 +25,7 @@ invisible(lapply(packages, library, character.only = TRUE))
 
 rm(miss_pkgs, packages)
 
-mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag-2017-mod-dat.RDS')
+mod_dat <- readRDS('/Users/raven/Documents/honors/honors-work/data/ag_2017_scaled_mod.RDS')
 setDT(mod_dat)
 
 options(tigris_class = 'sf')
@@ -35,17 +35,39 @@ bgs <- block_groups('MN', counties, 2016)
 spatdat <- left_join(bgs, mod_dat, on = 'GEOID')
 ```
 
+# Variables
+
+The variables we're working with now are logged and scaled to have mean 0 variance 1. Let's just look at them. 
+
+```{r}
+df <-melt(mod_dat[, -c("GEOID")], id=c("avg_act_per_capita")) 
+
+ggplot(mod_dat, aes(x=avg_act_per_capita)) +
+  geom_histogram() +
+  labs(title = "response variable") +
+  theme_minimal()
+
+ggplot(df, aes(x=value)) +
+  geom_histogram() +
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "All our variables") +
+  theme_minimal()
+
+ggplot(df, aes(x=value, y=avg_act_per_capita)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth() +
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "Visual correlation?") +
+  theme_minimal()
+```
+
+It's a little hard to see above but I think all the general trends make sense. 
+
 # Correlation
 ```{r}
-small_dat <- mod_dat[, c("estimate_median_age", "estimate_tot_pop", "estimate_median_hh_income", "perc_only_white",
-                         "perc_hs", "perc_bach", "perc_rent", "perc_no_veh", "perc_english_only", "perc_foreign",
-                         "emp_density", "avg_act_per_capita", "log_avg_act", "avg_trips")]
-
-toscale <- small_dat[is.finite(log_avg_act) & !is.na(log_avg_act)]
-scaled_dat <- scale(toscale)
-scaled_dat <- as.data.frame(scaled_dat)
-
-cor_matrix <- round(cor(x=scaled_dat, use = 'pairwise.complete.obs', method = 'pearson'), 2)
+cor_dat <- mod_dat[!is.na(estimate_median_hh_income), -c('GEOID', 'sqkm', 'estimate_tot_pop', 'tot_jobs', 
+                                                         'w_total_jobs_here')]
+cor_matrix <- round(cor(x=cor_dat), 2)
 cor_melt <- melt(cor_matrix)
 
 ggplot(cor_melt, aes(x=Var1, y=Var2, fill=abs(value))) + 
@@ -53,99 +75,166 @@ ggplot(cor_melt, aes(x=Var1, y=Var2, fill=abs(value))) +
     theme(axis.text.x = element_text(angle = 60, hjust = 1))
 ```
 
-Obviously employment density overpowers all the other variables here. The only others that stick out are percent renting and percent without a vehicle. 
+Okay I do think there's some interesting stuff going on with the percent jobs less 40. Lot's of the correlations that stick out are kinda silly.
 
-# Variables
 ```{r}
-df <-melt(scaled_dat, id=c("log_avg_act")) 
-
-ggplot(df, aes(x=value, y=log_avg_act)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth() +
-  facet_wrap(~variable, scales = "free") +
-  theme_minimal()
+ggplot(cor_melt, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  scale_fill_gradientn(colors = c(low = muted("red"), mid = "white", high = muted("blue")))
+  
 ```
 
-Not surprising: Empoyment density has the highest positive relationship (easier to see if we look beyond the few outliers). Maybe surprising: small effect of high school education, high effect of precent renting. 
+
 
 # Spatial clustering?
 
-I expect the Moran's I to be relatively low because it tests for *clustering* and our spatial structure here is more linear. There are ways to detect that but I'm not sure how pertinent it is. 
+I expect the Moran's I to be relatively low because it tests for *clustering* and our spatial structure here is more linear. This will also drop about 1000 rows with nas but that's okay for now. 
 
 ```{r}
-spat_moran_dat <- left_join(bgs, scaled_dat, by = 'GEOID')
-
-W <- poly2nb(spat_moran_dat)
+W <- poly2nb(spatdat)
 W_list <- nb2listw(W, style = "B")
 
-moran.mc(x = na.omit(spat_moran_dat$log_avg_act), listw = W_list, nsim = 1000, zero.policy = TRUE)
+moran.mc(x = na.omit(spatdat$avg_act_per_capita), listw = W_list, nsim = 1000, zero.policy = TRUE)
 ```
 
-As expected, slight-moderate spatial clustering. 
+As expected, moderate spatial clustering!
 
 # Linear models
 
 ```{r}
-mod1 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh, data = scaled_dat)
+mod1 <- lm(avg_act_per_capita ~ emp_density + perc_rent + perc_no_veh, data = mod_dat)
 summary(mod1)
 ```
 
 P-values will always be low like this until we incorporate **level of service** predictors. The most basic is number of trips per day, although this is super flawed!!
 
 ```{r}
-mod2 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh + avg_trips, data = scaled_dat)
+mod2 <- lm(avg_act_per_capita ~ emp_density + perc_rent + perc_no_veh + avg_trips, data = mod_dat)
 summary(mod2)
 ```
 
-Hmm... that did less than I expected in terms of $R^2$. For fun, all in:
+Nice! For fun, all in:
 
 ```{r}
-mod3 <- lm(log_avg_act ~ emp_density + perc_rent + perc_no_veh + estimate_median_hh_income +
-           perc_only_white + perc_bach + perc_english_only + perc_foreign + avg_trips + 
-           estimate_median_age + estimate_tot_pop,
-           data = scaled_dat)
+mod3 <- lm(avg_act_per_capita ~ ., data = mod_dat[, -c('GEOID')])
 summary(mod3)
 ```
-Oh boy. I think the missing pieces are more level of service measures, like walkability or a "total density" measure. 
 
-Different response: 
+Interesting: the only things that are significant at any level are:
+
+- median age
+- total pop
+- wac jobs less than 40k
+- wac total jobs
+- employment density 
+- percent no vehicle
+- percent rent
+- number of trips
+
+Employment models. 
+
 ```{r}
-mod4 <- lm(avg_act_per_capita ~ emp_density + perc_rent + perc_no_veh + estimate_median_hh_income +
-           perc_only_white + perc_bach + perc_english_only + perc_foreign + avg_trips + 
-           estimate_median_age + estimate_tot_pop,
-           data = scaled_dat)
+mod4 <- lm(avg_act_per_capita ~ emp_density + avg_trips, mod_dat)
 summary(mod4)
 ```
 
-Interesting. 
-
+Just rac
 ```{r}
-mod5 <- lm(avg_act_per_capita ~ emp_density + estimate_median_hh_income +
-           perc_bach  + avg_trips + estimate_tot_pop,
-           data = scaled_dat)
+mod5 <- lm(avg_act_per_capita ~ emp_density + perc_jobs_white + perc_jobs_men + perc_jobs_no_college + perc_jobs_less40 + perc_jobs_age_less30 + avg_trips, mod_dat)
 summary(mod5)
 ```
+Okay interesting that age of worker overpowers wage. 
+
+Same mod but with wac:
+```{r}
+mod6 <- lm(avg_act_per_capita ~ emp_density + w_perc_jobs_white + w_perc_jobs_men + w_perc_jobs_no_college + w_perc_jobs_less40 + w_perc_jobs_age_less30 + avg_trips, mod_dat)
+summary(mod6)
+```
+
+Okay, interesting.. what does the difference between wac & rac mean??
+
+```{r}
+mod7 <- lm(avg_act_per_capita ~ emp_density + avg_trips + perc_jobs_less40 + w_perc_jobs_less40
+           + perc_jobs_age_less30 + w_perc_jobs_age_less30, mod_dat)
+summary(mod7)
+```
+
+Seems like resident area characteristics are slightly more influential. Overall this has been interesting but I'm going to try some stepwise selection I think. 
+
+# Best Subsets
+
+```{r}
+small_dat <-  mod_dat[, -c("perc_bach", "tot_jobs", "w_total_jobs_here", "sqkm", "GEOID", "estimate_tot_pop")]
+best_subsets <- regsubsets(avg_act_per_capita ~ ., small_dat, nvmax = 21)
+
+best_sum <- summary(best_subsets)
+
+pd <- data.frame(size = 1:20, adjr2 = best_sum$adjr2)
+ggplot(pd, aes(x = size, y = adjr2)) + 
+  geom_point() + 
+  geom_line() + 
+  labs(x="subset size", y="Adjusted R-squared") + 
+  theme_minimal()
+```
+
+Seems like 12 is the absolute max adjusted $R^2$. 
+
+The 12 predictors are
+
+- avg_trips
+- estimate_median_hh_income
+- perc_only_white
+- perc_hs
+- perc_no_veh
+- perc_english_only
+- emp_density
+- perc_jobs_age_less30
+- w_perc_jobs_white
+- w_perc_jobs_men (surprising?? which sign is the coefficient??)
+- w_perc_jobs_no_college
+- w_perc_jobs_less40
+
+
+Best subset lm:
+```{r}
+bss <- lm(avg_act_per_capita ~ avg_trips + estimate_median_hh_income + perc_only_white + perc_hs + perc_no_veh + perc_english_only
+          + emp_density + perc_jobs_age_less30 + w_perc_jobs_white + w_perc_jobs_men + w_perc_jobs_no_college + w_perc_jobs_less40, mod_dat)
+
+summary(bss)
+```
+
+w_perc_men coeff is positive -- so men are slightly more likely to commute via transit? Suprising: positive coef on perc_english_only, negative coef on w_perc_jobs_no_college. 
+
+Might move forward with the best subset of 6 for now
+```{r}
+bss6 <- lm(avg_act_per_capita ~ avg_trips + estimate_median_hh_income + perc_hs + emp_density + perc_jobs_age_less30 + w_perc_jobs_white, mod_dat)
+summary(bss6)
+```
+
 
 # Spatial residuals
 
-Going to run with model 2 for now. 
-```{r}
-summary(mod2)
-```
+Going to run with bss6 for now. 
 
 Let's check the spatial dependence in the residuals. 
 
+
 ```{r}
-resids <- residuals(mod2)
-moran.mc(x = resids, listw = W_list, nsim = 1000, zero.policy = TRUE)
+resids <- residuals(bss6)
+
+resid_dat <- mod_dat[!is.na(avg_act_per_capita) & !is.na(estimate_median_hh_income) & !is.na(emp_density)]
+resid_dat$resids <- resids
+
+resid_dat <- left_join(bgs, resid_dat, by = 'GEOID')
+Wr <- poly2nb(resid_dat)
+Wr_list <- nb2listw(Wr, style = "B")
+
+moran.mc(x = na.omit(resid_dat$resids), listw = Wr_list, nsim = 1000, zero.policy = TRUE)
 ```
 
+Okay so that handled a decent about of the clustering -- we know there's still significant "linear clustering." We might also expect that some of the remaining variation could be explained by spatial variation?
 
 
-resids <- residuals(lin1)
+- don't need to standardize y
 
-length(resids)
-dim(W_list)
-W_list
-
-moran.mc(x=resids, listw = W_list, nsim = 1000, zero.policy = TRUE)
