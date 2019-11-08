@@ -90,4 +90,196 @@ pp_check(response, yrep, ppc_dens_overlay) + theme_minimal()
 
 So we're understimating the tiiiiiny second mode, overestimating for a bit, and doing pretty well on the RHS. 
 
-# 
+# Best 6 Subset
+```{r}
+mod_dat <- mod_dat[!is.na(avg_act_per_capita) & !is.na(avg_trips) & !is.na(estimate_median_hh_income) &
+                     !is.na(perc_hs) & !is.na(emp_density) & !is.na(perc_jobs_age_less30) & !is.na(w_perc_jobs_white)]
+response2 <- mod_dat$avg_act_per_capita
+stan_dat2 <- list(N = length(mod_dat$avg_act_per_capita),
+                 y = mod_dat$avg_act_per_capita,
+                 x1 = mod_dat$avg_trips,
+                 x2 = mod_dat$estimate_median_hh_income,
+                 x3 = mod_dat$perc_hs,
+                 x4 = mod_dat$emp_density,
+                 x5 = mod_dat$perc_jobs_age_less30,
+                 x6 = mod_dat$w_perc_jobs_white)
+
+mod2_code = "
+data {
+  int <lower = 1> N; //sample size
+  vector[N] x1; //predictor
+  vector[N] x2;
+  vector[N] x3;
+  vector[N] x4;
+  vector[N] x5;
+  vector[N] x6;
+  vector[N] y; //outcome
+}
+
+parameters {
+  real alpha; //intercept
+  real beta1; //slope
+  real beta2;
+  real beta3;
+  real beta4;
+  real beta5;
+  real beta6;
+  real <lower = 0> sigma; //sd
+}
+
+model {
+  y ~ normal(alpha + x1*beta1 + x2*beta2 +  x3*beta3 + x4*beta4 + x5*beta5 + x6*beta6, sigma);
+}
+
+generated quantities{
+  vector[N] y_rep; 
+  for (n in 1:N)
+    y_rep[n] = normal_rng(alpha + x1[n]*beta1 + x2[n]*beta2 + x3[n]*beta3 + x4[n]*beta4 + x5[n]*beta5 + x6[n]*beta6, sigma);
+}
+
+"
+
+fit2 <- stan(model_code = mod2_code, data = stan_dat2, iter = 1000, verbose = FALSE)
+
+```
+
+```{r}
+#launch_shinystan(fit2)
+
+posterior2 <- extract(fit2)
+yrep2 <- posterior2$y_rep
+yrep2 <- yrep2[sample(nrow(yrep2), 50), ]
+attributes(response2) <- NULL
+
+pp_check(response2, yrep2, ppc_dens_overlay) + theme_minimal()
+```
+
+```{r}
+stan_dat3 <- list(N = length(mod_dat$avg_act_per_capita),
+                 y = mod_dat$avg_act_per_capita,
+                 x1 = mod_dat$avg_trips,
+                 x2 = mod_dat$emp_density)
+
+mod3_code = "
+data {
+  int <lower = 1> N; //sample size
+  vector[N] x1; //predictor
+  vector[N] x2;
+  vector[N] y; //outcome
+}
+
+parameters {
+  real alpha; //intercept
+  real beta1; //slope
+  real beta2;
+  real <lower = 0> sigma; //sd
+}
+
+model {
+  y ~ normal(alpha + x1*beta1 + x2*beta2, sigma);
+}
+
+generated quantities{
+  vector[N] y_rep; 
+  for (n in 1:N)
+    y_rep[n] = normal_rng(alpha + x1[n]*beta1 + x2[n]*beta2, sigma);
+}
+
+"
+
+fit3 <- stan(model_code = mod3_code, data = stan_dat3, iter = 1000, verbose = FALSE)
+```
+```{r}
+posterior3 <- extract(fit3)
+yrep3 <- posterior3$y_rep
+yrep3 <- yrep3[sample(nrow(yrep3), 50), ]
+
+pp_check(response2, yrep3, ppc_dens_overlay) + theme_minimal()
+```
+
+Okay so simpler model is better
+
+# Identify tiny second mode
+
+```{r}
+mod_dat[, mode := 0]
+mod_dat[avg_act_per_capita < -2 & avg_act_per_capita > -4, mode := 1]
+```
+
+There are only about 40 block groups in that tiny second mode. 
+
+Plot them:
+
+```{r}
+counties = c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
+bgs <- block_groups(state = "MN", county = counties, year = 2016)
+
+mode <- left_join(bgs, mod_dat, on = "GEOID")
+mode <- mode %>%
+  filter(!is.na(mode))
+
+ggplot(mode) +
+  geom_sf(aes(fill = as.factor(mode))) + 
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+summary(mod_dat[mode == 1])
+
+median(mod_dat$avg_act_per_capita)
+
+mode(mod_dat$avg_act_per_capita)
+```
+
+```{r}
+df <-melt(mod_dat, id=c("GEOID")) 
+setDT(df)
+
+tiny_mode <- mod_dat[mode == 1]
+tiny_mode <- tiny_mode %>%
+  select_if(is.numeric)
+
+meds <- lapply(tiny_mode, 2, FUN = median)
+setDT(meds)
+meds <- t(meds)
+
+all_meds <- lapply(mod_dat[, -c('GEOID')], 2, FUN = median)
+setDT(all_meds)
+all_meds <- t(all_meds)
+
+# ggplot(df, aes(x=value)) +
+#   geom_density() +
+#   facet_wrap(~variable, scales = "free") +
+#   labs(title = "All our variables") +
+#   theme_minimal()
+
+medians <- cbind(all_meds, meds)
+colnames(medians) <- c("overall_median", "second_mode")
+medians <- as.data.frame(medians)
+medians <- tibble::rownames_to_column(medians)
+
+overall <- ggplot(medians, aes(x=rowname, y = overall_median)) +
+  geom_col() + labs(title = "overall medians") + theme(axis.text = element_text(angle = 90, hjust = 1)) + ylim(-3, 1)
+
+mode <- ggplot(medians, aes(x=rowname, y = second_mode)) +
+  geom_col() + labs(title = "Second mode") + theme(axis.text = element_text(angle = 90, hjust = 1)) + ylim(-3, 1)
+
+gridExtra::grid.arrange(overall, mode, ncol = 2)
+
+medians
+
+medians <- medians %>% 
+  tidyr::pivot_longer(-rowname, names_to = "value", values_to = "count")
+setDT(medians)
+
+ggplot(medians, aes(x=rowname, y=count, fill=value)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Overall medians vs second mode") +
+  theme_minimal() +
+  theme(axis.text = element_text(hjust = 1, angle = 90))
+```
+
+Overall, much more extreme values in the second mode. I think in general we can classify the second mode as wealtheir, suburban block groups with more jobs, less folks without vehicles, older folks, and less non-white/non-native residents. Also, *no* rail stops and significantly fewer bus stops. I think this all checks out. One natably different thing is that the rac total jobs is MUCH higher in the second mode, suggesting that employment of residents is critical to ridership (makes sense -- people without jobs have less money and less reason to travel). Maybe we incorporate unemployment data? Or from the numbers we have: rac tot_jobs/est_tot_pop?
+
+
