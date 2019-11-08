@@ -35,6 +35,19 @@ counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washi
 bgs <- block_groups('MN', counties, year = 2016)
 bgs <- st_transform(bgs, 4326)
 
+# mark rail stops
+stops <- stops %>%
+  filter(busstop_yn == "Y")
+
+# somehow need to isolate light rail stops
+# using csv from: https://gisdata.mn.gov/dataset/us-mn-state-metc-trans-stop-boardings-alightings
+stops2 <- fread('data/csv_trans_stop_boardings_alightings/TransitStopsBoardingsAndAlightings2018.csv') # year doesn't really matter
+stops2 <- stops2[Route == "Red Line" | Route == "Blue Line" | Route == "North Star" | Route == "Green Line"]
+
+setDT(stops)
+stops[, rail := 0]
+stops[site_id %in% stops2$Site_id, rail := 1]
+stops <- st_as_sf(stops)
 
 ## aggregation without buffering --------------------------
 
@@ -48,19 +61,29 @@ rm(apc) # just for space
 apc_bg <- st_join(apc_loc, bgs, st_intersects)
 setDT(apc_bg)
 
+# count bus stops
+bc <- apc_bg[rail == 0, .(count_bus_stops = length(unique(site_id))), by = 'GEOID']
+rc <- apc_bg[rail == 1, .(count_rail_stops = length(unique(site_id))), by = 'GEOID']
+
 # save stops to block groups
 names(apc_bg)
 stop_to_bg <- apc_bg[, c('site_id', 'GEOID')]
 saveRDS(stop_to_bg, 'data/stop-to-bg.RDS')
 
 # save verion with no buffering
-apc_bg_sum <- apc_bg[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
+apc_bg_sum <- apc_bg[, .(ag_board = sum(daily_boards, na.rm = T), ag_alight = sum(daily_alights, na.rm = T), 
+                         ag_trips = sum(num_trips, na.rm = T), ag_interp = sum(num_interpolated, na.rm = T)),
                      by = c('GEOID', 'date_key', 'line_id', 'line_direction', 'service_id')]
+apc_bg_sum <- bc[apc_bg_sum, on = 'GEOID']
+apc_bg_sum <- rc[apc_bg_sum, on = 'GEOID']
 saveRDS(apc_bg_sum, 'data/mt-data/apc-bg-sum.RDS')
 
-apc_bg_sum <- readRDS('data/mt-data/apc-bg-sum.RDS') 
+#apc_bg_sum <- readRDS('data/mt-data/apc-bg-sum.RDS') 
+
 # save most aggregated version
-apc_bg_ag_sum <- apc_bg_sum[, .(ag_board = sum(ag_board, na.rm = T), ag_alight = sum(ag_alight, na.rm = T), ag_trips = sum(ag_trips, na.rm = T), ag_interp = sum(ag_interp, na.rm = T)),
+apc_bg_ag_sum <- apc_bg_sum[, .(ag_board = sum(ag_board, na.rm = T), ag_alight = sum(ag_alight, na.rm = T), 
+                                ag_trips = sum(ag_trips, na.rm = T), ag_interp = sum(ag_interp, na.rm = T),
+                                count_bus_stops = count_bus_stops, count_rail_stops = count_rail_stops),
                         by = c('GEOID', 'date_key')]
 saveRDS(apc_bg_ag_sum, 'data/mt-data/apc-bg-ag-sum.RDS')
 
