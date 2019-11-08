@@ -1,6 +1,6 @@
 ## Goal: get working modeling data for 2017
 
-packages <- c('data.table', 'tigris', 'ggplot2', 'dplyr')
+packages <- c('data.table', 'tigris', 'ggplot2', 'dplyr', 'rgdal', 'sf')
 
 miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
 
@@ -21,7 +21,9 @@ setDT(apc)
 
 # restrict to 2017
 apc <- apc[date_key %like% 2017]
-apc <- apc[, .(avg_activity = mean(ag_board + ag_alight), avg_trips = mean(ag_trips)), by = GEOID]
+apc <- apc[, .(avg_activity = mean(ag_board + ag_alight), avg_trips = mean(ag_trips),
+               count_bus_stops = count_bus_stops, count_rail_stops = count_rail_stops), by = GEOID]
+apc <- unique(apc)
 
 # add basic acs
 acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
@@ -87,7 +89,7 @@ small_dat <- mod_dat[, c("GEOID", "avg_act_per_capita", "avg_trips", "estimate_m
                          "emp_density", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                          "perc_jobs_less40", "perc_jobs_age_less30", "w_total_jobs_here", "w_perc_jobs_white", 
                          "w_perc_jobs_men", "w_perc_jobs_no_college", "w_perc_jobs_less40", "w_perc_jobs_age_less30", 
-                         "sqkm", "estimate_tot_pop", "estimate_median_age")]
+                         "sqkm", "estimate_tot_pop", "estimate_median_age", "count_rail_stops", "count_bus_stops")]
 setDT(small_dat)
 
 # for modeling
@@ -105,6 +107,8 @@ setDT(logged_dat)
 # scale
 scaled_dat <- lapply(logged_dat[, -c('GEOID')], scale)
 scaled_dat$GEOID <- logged_dat$GEOID
-setDT(scaled_dat)
+scaled_dat <- as.data.table(scaled_dat)
 
 saveRDS(scaled_dat, 'data/ag_2017_scaled_mod.RDS')
+
+
