@@ -163,6 +163,29 @@ ten_veh[, perc_no_veh := tot_no_veh/estimate_total_pop]
 
 saveRDS(ten_veh, 'data/covariates/housing-and-vehicles.RDS')
 
+
+# acs employment data ---------------------------
+
+acs_emp <- map_dfr(
+  years,
+  ~ get_acs(
+    geography = "block group",
+    variables = c(transit_commute = "B08006_008",
+                  total_commute = "B08006_001"),
+    state = "MN",
+    county = counties,
+    year = .x,
+    survey = "acs5"
+  ),
+  .id = "year"
+)
+
+acs_emp <- acs_emp %>% pivot_wider(names_from = variable, values_from = c('estimate', 'moe'))
+setDT(acs_emp)
+acs_emp[, perc_transit_comm := estimate_transit_commute/estimate_total_commute]
+
+saveRDS(acs_emp, 'data/covariates/acs-emp.RDS')
+
 ## employment data ----------------------------------------
 
 # i'll use the employment data i cleaned here:

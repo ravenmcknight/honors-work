@@ -39,12 +39,14 @@ language <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/l
 nativity <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/nativity.RDS')
 wac <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/wac/all-wac.RDS')
 rac <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/rac/all-rac.RDS')
+acs_emp <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/acs-emp.RDS')
 setDT(educ)
 setDT(house_veh)
 setDT(language)
 setDT(nativity)
 setDT(wac)
 setDT(rac)
+setDT(acs_emp)
 
 mod_dat <- apc[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID']
 mod_dat <- mod_dat[house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], on = 'GEOID']
@@ -65,6 +67,8 @@ rac <- rac[, c("GEOID", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jo
 
 mod_dat <- mod_dat[wac, on = 'GEOID']
 mod_dat <- mod_dat[rac, on = 'GEOID']
+acs_emp <- acs_emp[year == "3", c("GEOID", "perc_transit_comm")]
+mod_dat <- mod_dat[acs_emp, on = 'GEOID']
 
 counties <- c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
 bgs <- block_groups("MN", counties, 2016)
@@ -89,7 +93,8 @@ small_dat <- mod_dat[, c("GEOID", "avg_act_per_capita", "avg_trips", "estimate_m
                          "emp_density", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                          "perc_jobs_less40", "perc_jobs_age_less30", "w_total_jobs_here", "w_perc_jobs_white", 
                          "w_perc_jobs_men", "w_perc_jobs_no_college", "w_perc_jobs_less40", "w_perc_jobs_age_less30", 
-                         "sqkm", "estimate_tot_pop", "estimate_median_age", "count_rail_stops", "count_bus_stops")]
+                         "sqkm", "estimate_tot_pop", "estimate_median_age", "count_rail_stops", "count_bus_stops",
+                         "perc_transit_comm")]
 setDT(small_dat)
 
 # for modeling
