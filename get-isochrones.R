@@ -12,10 +12,10 @@ invisible(lapply(packages, library, character.only = TRUE))
 
 rm(miss_pkgs, packages)
 
-# install.packages('otptools', type = 'source', 
+# install.packages('otptools', type = 'source',
 #                 repos = 'http://mtapshiny1p/MT/SIDev/R')
 
-library(otptools)
+#library(otptools)
 
 
 ## get stops --------------------------
@@ -60,14 +60,39 @@ setnames(otpstop, "site_id", "id")
 secs <- list(1:1000, 1001:2000, 2001:3000, 3001:4000, 4001:5000, 5001:6000,
           6001:7000, 7001:8000, 8001:9000, 9001:10000, 10001:11000, 11001:12000,
           12001:13000, 13001:14000, 14001:15016)
+
+iso_list <- list()
+# for(i in 1:15){
+#   isos <- queryIsochrone(location = otpstop[secs[[i]]],
+#                          otp_params = otp_params(cutoffSec = c(600), mode = "WALK"),
+#                          host = "localhost", port = 8080)
+#   saveRDS(isos, paste0('data/isochrones/isos', i, '.RDS'))
+#   iso_list[[i]] <- isos
+# }
+
+# loop just to read:
 for(i in 1:15){
-  isos <- queryIsochrone(location = otpstop[secs[[i]]], 
-                         otp_params = otp_params(cutoffSec = c(600), mode = "WALK"),
-                         host = "localhost", port = 8080)
-  saveRDS(isos, paste0('data/isochrones/isos', i, '.RDS'))
+  isos <- readRDS(paste0('data/isochrones/isos', i, '.RDS'))
+  iso_list[[i]] <- isos
 }
 
+# compile into 1 df
+isos <- rbindlist(iso_list)
 
 # calculate area of sfc obejct --------
+isos <- isos %>%
+  mutate(area = as.numeric(st_area(geometry)), 
+         site_id = id)
 
+# does this seem suspicious? was there a max walk by accident?
+ggplot(isos, aes(x=area)) +
+  geom_histogram()
 
+isos <- st_as_sf(isos)
+
+ggplot(isos[1:10, ]) +
+  geom_sf()
+
+# now we have point level data
+
+saveRDS(isos, 'data/isochrones/all_iso.RDS')
