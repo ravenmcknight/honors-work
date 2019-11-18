@@ -43,15 +43,30 @@ This model can be easily expanded to include different types of covariates (ie c
 
 # Simple Application
 
-We can start by including one of each "type" of predictor. Let
+In the spatiotemporal context, our response variable is total daily boardings and alightings by block group. This is plotted below. We assume a Poisson distribution. 
+
+```{r}
+mod_dat <- readRDS('data/mt-data/daily_aggregation_1118.RDS')
+setDT(mod_dat)
+mod_dat[, daily_activity := sum(daily_boards + daily_alights), keyby = .(GEOID, date_key)]
+
+ggplot(mod_dat, aes(x=log(daily_activity))) +
+  geom_histogram()
+```
+
+
+
+In this analysis, covariates are scaled to have mean 0 and variance 1 as well and then logged. We can start by including one of each "type" of predictor. Let
 
 \begin{align}
-X_{1lt} &= \text{number of trips} \\
+X_{1lt} &= \text{number of stops} \\
 W_{1lr} &= \text{population density} \\
 Z_{1l} &= \text{walkability}
 \end{align}
 
-Then we can fit the above model with $A = C = D = 1$. Here, we'll define walkability as the area of a 10-minute walk isochrone originating at the population-weighted center of each block group in the Metro Area. Note that walkability must obviously change over time but a) the Census only publishes population weighted block group centroids at the Decennial census and b) calculating walk isochrones on historical street networks is an unnecessary challenge.  
+Then we can fit the above model with $A = C = D = 1$. 
+
+Here, we'll define walkability as the area of a 10-minute walk isochrone originating at the population-weighted center of each block group in the Metro Area. Note that walkability must obviously change over time but a) the Census only publishes population weighted block group centroids at the Decennial census and b) calculating walk isochrones on historical street networks is an unnecessary challenge. Population density is defined as total population normalized by total land acreage. Number of stops is simply the number of times a bus stopped to pick up/drop off passengers in a block group on a given day. 
 
 <!-- So we'll definitely have the most "W" style covariates. Also, I will almost definitely want to give theta a CAR prior (if I do we're gonna get into some serious hyper-hyper priors oof --> 
 

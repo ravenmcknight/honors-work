@@ -18,21 +18,34 @@ options(tigris_class = 'sf')
 apc <- readRDS('data/mt-data/apc-interpolated.RDS')
 setDT(apc)
 
-apc_ag <- apc[, .(daily_boards = sum(board), daily_alights = sum(alight), num_interpolated = sum(interpolated), 
-                  num_routes = length(unique(line_id)), daily_stops = .N), keyby = .(date_key, site_id)]
-saveRDS(apc_ag, 'data/mt-data/daily_aggregation_1118.RDS')
-
-# oops, exclude 2018 for now
-apc_ag <- apc_ag[!date_key %like% 2018]
-
-
-# now, aggregate to block groups
+apc <- apc[!date_key %like% 2018]
+apc[, site_id := as.character(site_id)]
 
 # read stop to block group from "aggregate-apc.R" script
 stop_to_bg <- readRDS('data/mt-data/stop-to-bg.RDS')
 stop_to_bg <- unique(stop_to_bg)
+apc <- stop_to_bg[apc, on = 'site_id']
 
-apc_ag[, site_id := as.character(site_id)]
-apc_ag <- stop_to_bg[apc_ag, on = 'site_id']
+# exclude rail stations
+stops2 <- fread('data/csv_trans_stop_boardings_alightings/TransitStopsBoardingsAndAlightings2018.csv') # year doesn't really matter
+stops2 <- stops2[Route == "Blue Line" | Route == "North Star" | Route == "Green Line"]
 
-# mark rail stops
+apc <- apc[!site_id %in% stops2$Site_id]
+# double check Green & Blue line are out
+apc <- apc[line_id != 902 & line_id != 901]
+
+# exclude things outside of 7 county
+apc <- apc[!is.na(GEOID)]
+
+apc_ag <- apc[, .(daily_boards = sum(board), daily_alights = sum(alight), num_interpolated = sum(interpolated), 
+                  num_routes = length(unique(line_id)), daily_stops = .N), keyby = .(date_key, GEOID)]
+
+saveRDS(apc_ag, 'data/mt-data/daily_aggregation_1118.RDS')
+
+# more modeling specific things
+
+apc_ag[, daily_activity := daily_boards + daily_alights, keyby = .(date_key, GEOID)]
+apc_ag[, total_daily_activity := sum(daily_boards + daily_alights), keyby = .(date_key)]
+apc_ag[, expected_daily_activity := daily_activity/total_daily_activity, keyby = .(date_key, GEOID)]
+
+saveRDS(apc_ag, 'data/spattemp_mod_dat_1118.RDS')
