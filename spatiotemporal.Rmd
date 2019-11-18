@@ -1,0 +1,58 @@
+---
+title: "A Spatio-temporal Model"
+author: "Raven McKnight"
+date: "11/17/2019"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: paper
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Model Specification
+
+For block group $l$, year $r$, and day $t$, the spatio-temporal model can be defined
+
+\begin{align}
+
+Y &\sim \text{Poisson}(E_{lrt} * \text{exp}(\lambda_{lrt})) \\
+\lambda_{lrt} &= \beta_0 + \sum_{a=1}^{A}\alpha_aX_{alt} + \sum_{c=1}^{C}\gamma_cW_{clr} + \sum_{d=1}^{D}\delta_dZ_{dl} + \theta_t \\
+\theta_t &\sim N(0, \frac{1}{\tau})
+
+\end{align}
+
+where
+
+* $Y_{lrt}$ is the number of boardings and alightings in group $lrt$
+* $E_{lrt}$ is the expected number of boardings and alightings in group $lrt$ (defined as total observed boardings and alightings on day $rl$ divided by total number of block groups in study area)
+* $\lambda_{lrt}$ is the log-relative "risk" of ridership for group $lrt$
+* $\beta_0$ is an intercept
+* $\alpha_aX_{alt}$ are covariates varying daily across space
+* $\gamma_cW_{clr}$ are covariates varying annually across space
+* $\delta_dZ_{dl}$ are covariates varying spatially but not temporally
+* $\theta_t$ are spatial random effects to capture extra-Poisson variance. Can be given a CAR prior later if we supsect the overdispersion varies spatially
+
+This model can be easily expanded to include different types of covariates (ie covariates that vary over time but not across block groups, such as gas prices or temperature). 
+
+
+# Simple Application
+
+We can start by including one of each "type" of predictor. Let
+
+\begin{align}
+X_{1lt} &= \text{number of trips} \\
+W_{1lr} &= \text{population density} \\
+Z_{1l} &= \text{walkability}
+\end{align}
+
+Then we can fit the above model with $A = C = D = 1$. Here, we'll define walkability as the area of a 10-minute walk isochrone originating at the population-weighted center of each block group in the Metro Area. Note that walkability must obviously change over time but a) the Census only publishes population weighted block group centroids at the Decennial census and b) calculating walk isochrones on historical street networks is an unnecessary challenge.  
+
+<!-- So we'll definitely have the most "W" style covariates. Also, I will almost definitely want to give theta a CAR prior (if I do we're gonna get into some serious hyper-hyper priors oof --> 
+
+
