@@ -1,6 +1,6 @@
 ## Goal: use opentripplanner to calculate 10 minute walking distance from each bus stop
 
-packages <- c('data.table', 'rgdal', 'sf', 'tidyverse', 'lwgeom')
+packages <- c('data.table', 'rgdal', 'sf', 'tidyverse', 'lwgeom', 'tigris')
 
 miss_pkgs <- packages[!packages %in% installed.packages()[,1]]
 
@@ -17,6 +17,7 @@ rm(miss_pkgs, packages)
 
 #library(otptools)
 
+options(tigris_class = "sf")
 
 ## get stops --------------------------
 
@@ -90,9 +91,29 @@ ggplot(isos, aes(x=area)) +
 
 isos <- st_as_sf(isos)
 
-ggplot(isos[1:10, ]) +
-  geom_sf()
-
 # now we have point level data
 
 saveRDS(isos, 'data/isochrones/all_iso.RDS')
+
+
+tracts <- tigris::tracts("MN", county = c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington"))
+tracts <- st_transform(tracts, 4326)
+
+# isos %>%
+#   ggplot(data = isos, aes(x=start_lat, y=start_lon)) +
+#   geom_sf(data = counties) + 
+#   stat_density_2d(aes(fill=..level..), geom="polygon", alpha = 0.3) +
+#   scale_fill_gradient2('"Walkability"', low = "grey", mid = "yellow", high = "red") +
+#   theme_minimal()
+
+ggplot() +
+  geom_sf(data = tracts) +
+  stat_density_2d(data = isos, aes(x=start_lon, y=start_lat, fill=..level..), geom="polygon", alpha = 0.5) +
+  scale_fill_gradient2("Stop Density", low = "grey", mid = "yellow", high = "red") +
+  theme_minimal()
+
+ggplot(isos) +
+#  geom_sf(data = tracts) +
+  geom_sf(aes(fill = (area < 991455)), lwd = 0, alpha = .2)
+
+i = st_intersection(isos)
