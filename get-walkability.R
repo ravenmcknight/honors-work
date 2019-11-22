@@ -27,26 +27,17 @@ setnames(centrs_loc, c("bgid", "LATITUDE", "LONGITUDE"), c("id", "lat", "lon"))
 
 # then, use opentripplanner to get 10min walk isos
 isos <- queryIsochrone(location = centrs_loc,
-                       otp_params = otp_params(cutoffSec = c(600), mode = "WALK"),
+                       otp_params = otp_params(cutoffSec = c(600), mode = "WALK", 
+                                               maxWalkDistance = 800, walkSpeed = 5000/3600),
                        host = "localhost", port = 8080)
 
-isos <- isos %>%
-  mutate(area = as.numeric(st_area(geometry)), 
-         GEOID = id)
+saveRDS(isos, 'data/isochrones/raw_isochrones.RDS')
 
-# messy but works 
-isos_dt <- as.data.frame(isos)
-isos_bg <- left_join(bgs, isos_dt[, c('area', 'GEOID')], by = 'GEOID')
-setDT(isos_bg)
-isos_bg[is.na(isos_bg$area), area := 0] 
-isos_bg <- st_as_sf(isos_bg)
+setDT(isos)
 
-ggplot(isos_bg) +
-  geom_sf(aes(fill = area), lwd = 0) +
-  scale_fill_viridis_c()
+isos[, area := st_area(geometry)]
+isos[, max_area := 2.01*10^6] # area of perfect r=800m circle
+isos[, walkability := area/max_area] 
 
-ggplot(isos_bg) +
-  geom_sf(aes(fill = COUNTYFP), lwd = 0) +
-  scale_fill_viridis_d()
-
-saveRDS(isos_bg, "data/isochrones/centroid_isos.RDS")
+bg_isos <- isos[, .(area, max_area, walkability, GEOID)]
+saveRDS(bg_isos, 'data/isochrones/bg_isos_1122.RDS')
