@@ -1,5 +1,5 @@
 ---
-title: "A Spatio-temporal Model"
+title: "Spatial & Spatiotemporal  Models"
 author: "Raven McKnight"
 date: "11/17/2019"
 output: 
@@ -11,17 +11,335 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+#install.packages("INLA", repos=c(getOption("repos"), INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE)
+library(INLA)
+library(rstan)
+library(shinystan)
+library(data.table)
+library(ggplot2)
+```
+
+# Spatial
+
+## Model Specification
+For areal unit $i$, the spatial model can be defined
+
+\begin{align}
+Y_i|\theta_i & \sim \text{Poisson}(E_i\lambda_i) \\
+\eta_i = \text{log}(\lambda_i) &= \mu + x\beta + ((\sqrt{\rho / s})\phi + (\sqrt{1-\rho})\theta)\sigma  \\
+\phi &\sim N(0, Q^{-1}) \\
+\theta &\sim N(0, n) \\
+\rho & \sim \text{beta}(1/2, 1/2) \\
+\sigma &\sim \text{exponential }
+
+ 
+\end{align}
+
+
+
+<!--  Besag 74 proved that this simplifies to above \phi_i | \phi_{i-1}, j \neq i &\sim N(\sum_{j=1}^{n}w_{ij}\phi_j,  \sigma_p^2) \\ -->
+where 
+
+* $Y_i$ is the response in areal unit $i$
+* $E_i$ is the expected value in areal unit $i$
+* $\lambda_i$ is the relative risk (and $\eta$ the log relative risk)
+* $\mu$ is the overall risk level
+* $x\beta$ are covaraites
+* $\phi$ is the intrinsic conditional autoregressive (ICAR) model
+* $\theta$ is pure overdispersion
+* $\rho$ determines how much variance comes from spatially correlated vs independent error terms
+* $s$ is a scaling factor such that $Var(\phi_i) \approx 1$
+* $n$ is the number of fully connected subgraphs in the neighborhood structure. $n=1$ for study areas with no regions with 0 neighbors. 
+* $\sigma \geq 0$ is the overall standard deviation for combined error terms
+
+Here, the prior on $\phi$ comes from Besag (1974) where $Q$ is a precision matrix defined as 
+
+$$
+Q = D(I - \alpha A)
+$$
+
+where $D$ is the diagonal matrix with entries $d_{ii}$ equal to the number of neighbors of each region $i$ and A is the binary adjacency matrix with 0 on the diagonal. In CAR models, $\alpha$ controls for hte amount of spatial dependency. In the ICAR model I'm using, we set $\alpha = 1$ which reduces the computational complexity significantly. 
+
+
+The definition of $\eta$ here is similar to the most "popular" CAR model, the Besag-York-Mollie model. This particular model is slightly modified by Mitzi Morris & Andrew Gelman to include the $\rho$, $s$, and $\sigma$ parameters. It is similar to the Leroux model in the CARBayes package in that it applies a single precision parameter $\sigma$ on the combined spatial and non-spatial error terms and includes a "mixing" parameter $\rho$. This model is "better" because in practice, having both $\theta$ and $\phi$ can lead to problems because either one could describe any amount of the variation we see. This reparameterization was created in an attempt to make it easier to give logical priors/hyperpriors and to facilitate the mixing of spatial and non-spatial error. 
+
+
+## Example
+
+For this model, we can use stan code published (and well-explained) by Mitzi Morris [here](https://mc-stan.org/users/documentation/case-studies/icar_stan.html). I'm going to start by fitting their example to make sure everything is working. 
+
+
+```{r}
+# all code in this chunk from Mitzi Morris: https://mc-stan.org/users/documentation/case-studies/icar_stan.html
+
+data = list(N = 56,  
+ 	y   = c(    9,   39,   11,    9,   15,    8,   26,    7,    6,   20,
+                13,    5,    3,    8,   17,    9,    2,    7,    9,    7,
+                16,   31,   11,    7,   19,   15,    7,   10,   16,   11,
+                 5,    3,    7,    8,   11,    9,   11,    8,    6,    4,
+                10,    8,    2,    6,   19,    3,    2,    3,   28,    6,
+                 1,    1,    1,    1,    0,    0),
+     E = c( 1.4, 8.7, 3.0, 2.5, 4.3, 2.4, 8.1, 2.3, 2.0, 6.6,
+            4.4, 1.8, 1.1, 3.3, 7.8, 4.6, 1.1, 4.2, 5.5, 4.4,
+           10.5,22.7, 8.8, 5.6,15.5,12.5, 6.0, 9.0,14.4,10.2,
+            4.8, 2.9, 7.0, 8.5,12.3,10.1,12.7, 9.4, 7.2, 5.3,
+           18.8,15.8, 4.3,14.6,50.7, 8.2, 5.6, 9.3,88.7,19.6,
+            3.4, 3.6, 5.7, 7.0, 4.2, 1.8), 
+      x = c(16,16,10,24,10,24,10, 7, 7,16, 
+              7,16,10,24, 7,16,10, 7, 7,10,
+              7,16,10, 7, 1, 1, 7, 7,10,10,
+              7,24,10, 7, 7, 0,10, 1,16, 0,
+              1,16,16, 0, 1, 7, 1, 1, 0, 1,
+              1, 0, 1, 1,16,10),
+     adj = c( 5, 9,11,19,
+              7,10,
+              6,12,
+             18,20,28,
+              1,11,12,13,19,
+              3, 8,
+              2,10,13,16,17,
+              6,
+              1,11,17,19,23,29,
+              2, 7,16,22,
+              1, 5, 9,12,
+              3, 5,11,
+              5, 7,17,19,
+             31,32,35,
+             25,29,50,
+              7,10,17,21,22,29,
+              7, 9,13,16,19,29,
+              4,20,28,33,55,56,
+              1, 5, 9,13,17,
+              4,18,55,
+             16,29,50,
+             10,16,
+              9,29,34,36,37,39,
+             27,30,31,44,47,48,55,56,
+             15,26,29,
+             25,29,42,43,
+             24,31,32,55,
+              4,18,33,45,
+              9,15,16,17,21,23,25,26,34,43,50,
+             24,38,42,44,45,56,
+             14,24,27,32,35,46,47,
+             14,27,31,35,
+             18,28,45,56,
+             23,29,39,40,42,43,51,52,54,
+             14,31,32,37,46,
+             23,37,39,41,
+             23,35,36,41,46,
+             30,42,44,49,51,54,
+             23,34,36,40,41,
+             34,39,41,49,52,
+             36,37,39,40,46,49,53,
+             26,30,34,38,43,51,
+             26,29,34,42,
+             24,30,38,48,49,
+             28,30,33,56,
+             31,35,37,41,47,53,
+             24,31,46,48,49,53,
+             24,44,47,49,
+             38,40,41,44,47,48,52,53,54,
+             15,21,29,
+             34,38,42,54,
+             34,40,49,54,
+             41,46,47,49,
+             34,38,49,51,52,
+             18,20,24,27,56,
+             18,24,30,33,45,55),
+		weights = c( 1, 1,1,1,
+              1,1,
+              1,1,
+             1,1,1,
+              1,1,1,1,1,
+              1, 1,
+              1,1,1,1,1,
+              1,
+              1,1,1,1,1,1,
+              1, 1,1,1,
+              1, 1, 1,1,
+              1, 1,1,
+              1, 1,1,1,
+             1,1,1,
+             1,1,1,
+              1,1,1,1,1,1,
+              1, 1,1,1,1,1,
+              1,1,1,1,1,1,
+              1, 1, 1,1,1,
+              1,1,1,
+             1,1,1,
+             1,1,
+              1,1,1,1,1,1,
+             1,1,1,1,1,1,1,1,
+             1,1,1,
+             1,1,1,1,
+             1,1,1,1,
+              1,1,1,1,
+              1,1,1,1,1,1,1,1,1,1,1,
+             1,1,1,1,1,1,
+             1,1,1,1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,1,1,1,
+             1,1,1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,1,
+             1,1,1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,1,1,1,1,
+             1,1,1,
+             1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,1,
+             1,1,1,1,1,1),
+num = c(4, 2, 2, 3, 5, 2, 5, 1,  6, 
+            4, 4, 3, 4, 3, 3, 6, 6, 6 ,5, 
+            3, 3, 2, 6, 8, 3, 4, 4, 4,11,  
+            6, 7, 4, 4, 9, 5, 4, 5, 6, 5, 
+            5, 7, 6, 4, 5, 4, 6, 6, 4, 9, 
+            3, 4, 4, 4, 5, 5, 6)
+     )
+
+mungeCARdata4stan = function(adjBUGS,numBUGS) {
+  N = length(numBUGS);
+  nn = numBUGS;
+  N_edges = length(adjBUGS) / 2;
+  node1 = vector(mode="numeric", length=N_edges);
+  node2 = vector(mode="numeric", length=N_edges);
+  iAdj = 0;
+  iEdge = 0;
+  for (i in 1:N) {
+    for (j in 1:nn[i]) {
+      iAdj = iAdj + 1;
+      if (i < adjBUGS[iAdj]) {
+        iEdge = iEdge + 1;
+        node1[iEdge] = i;
+        node2[iEdge] = adjBUGS[iAdj];
+      }
+    }
+  }
+  return (list("N"=N,"N_edges"=N_edges,"node1"=node1,"node2"=node2));
+}
+
+y = data$y;
+E = data$E;
+K = 1;
+x = matrix(0.1 * data$x);
+
+nbs = mungeCARdata4stan(data$adj, data$num);
+N = nbs$N;
+node1 = nbs$node1;
+node2 = nbs$node2;
+N_edges = nbs$N_edges;
+
+#Build the adjacency matrix using INLA library functions
+adj.matrix = sparseMatrix(i=nbs$node1,j=nbs$node2,x=1,symmetric=TRUE)
+#The ICAR precision matrix (note! This is singular)
+Q=  Diagonal(nbs$N, rowSums(adj.matrix)) - adj.matrix
+#Add a small jitter to the diagonal for numerical stability (optional but recommended)
+Q_pert = Q + Diagonal(nbs$N) * max(diag(Q)) * sqrt(.Machine$double.eps)
+
+# Compute the diagonal elements of the covariance matrix subject to the 
+# constraint that the entries of the ICAR sum to zero.
+#See the inla.qinv function help for further details.
+Q_inv = inla.qinv(Q_pert, constr=list(A = matrix(1,1,nbs$N),e=0))
+
+#Compute the geometric mean of the variances, which are on the diagonal of Q.inv
+scaling_factor = exp(mean(log(diag(Q_inv))))
+
+scot_standat <- list(N = N, N_edges = N_edges, node1 = node1, node2 = node2,
+                     y = y, x = x, E = E, scaling_factor = scaling_factor, K=K)
+
+#scot_stanfit = stan("models/stan/bym2.stan", data=scot_standat, warmup=5000, iter=6000, verbose = T)
+#saveRDS(scot_stanfit, 'models/stan/fits/scot_bym2.RDS')
+
+scot_stanfit <- readRDS('models/stan/fits/scot_bym2.RDS')
+
+print(scot_stanfit, pars=c("beta0", "betas[1]", "rho", "sigma", "logit_rho", "mu[5]", "phi[5]", "theta[5]"), probs=c(0.025, 0.5, 0.975))
+```
+
+```{r}
+#launch_shinystan(scot_stanfit)
 ```
 
 
-# Model Specification
+## Simple Application
+
+For the spatial model, the response is average daily boardings and alightings by block group in 2017 (rounded to an integer). This response is below. We assume a Poisson distribution (the $\theta$ parameter should help account for overdispersion).  
+
+```{r}
+mod_dat <- readRDS('data/spattemp_mod_dat_1118.RDS')
+setDT(mod_dat)
+
+
+smod_dat <- mod_dat[date_key %like% 2017]
+smod_dat[, total_daily_activity := mean(total_daily_activity, na.rm = T)]
+smod_dat <- smod_dat[, .(daily_activity = mean(daily_activity, na.rm = T), daily_stops = mean(daily_stops, na.rm = T),
+                         total_daily_activity = mean(total_daily_activity, na.rm = T)), keyby = .(GEOID)]
+
+smod_dat[, `:=` (daily_activity = as.integer(daily_activity), daily_stops = as.integer(daily_stops), total_daily_activity = as.integer(total_daily_activity))]
+smod_dat[, expected_activity := as.integer(total_daily_activity / 2085)]
+
+ggplot(smod_dat, aes(x=daily_activity)) +
+  geom_histogram(bins = 60) + theme_minimal() +
+  labs(title = "Average Daily Boardings & Alightings by Block Group (response)",
+       subtitle = "Overdispersion caused by outliers in downtown Minneapolis")
+```
+
+The simplest reasonable model to fit has one covariate, average number of stops made in a block group. This covariate is similarly overdispersed so we scale & log it. 
+
+```{r}
+smod_dat[, sdaily_stops := scale(daily_stops)]
+smod_dat[, log_daily_stops := log(sdaily_stops), keyby = .(GEOID)]
+
+ggplot(smod_dat, aes(x=daily_stops)) +
+  geom_histogram(bins = 60) + theme_minimal() +
+  labs(title = "Average number of stops made by block group",
+       subtitle = "Similar overdispersion caused by downtown Minneapolis")
+
+ggplot(smod_dat, aes(x=log_daily_stops)) +
+  geom_histogram(bins = 30) + theme_minimal() +
+  labs(title = "Scaled & logged average number of stops made by block group",
+       subtitle = "Our first covariate")
+```
+
+
+### Preparing the data
+
+Coming soon
+
+## Limitations/Next steps
+
+There are a few things that still need to be worked out here:
+
+* Expected value/study area -- the expected value is determined by the number of block groups in the study. This is something I hadn't put much thought into previously. I'm working with the 7 county Metro Area, which is different from Metro Transit's official service area, which is different than all of the places Metro Transit actually serves. This is something I'll probably ask Eric et al about. 
+* Need to clarify if the data source I'm pulling from includes service run by other agencies like Southwest Transit. This isn't important to the model itself but to writing it up. Also unclear if it includes Park and Rides. 
+* Should add a generated quantity $y_rep$ to use for plotting with bayesplot/shinystan
+
+# Spatiotemporal
+
+This is still much more "in progress"
+
+
+## Model Specification
 
 For block group $l$, year $r$, and day $t$, the spatio-temporal model can be defined
 
 \begin{align}
 
-Y &\sim \text{Poisson}(E_{lrt} * \text{exp}(\lambda_{lrt})) \\
+Y_{lrt} &\sim \text{Poisson}(E_{lrt} * \text{exp}(\lambda_{lrt})) \\
 \lambda_{lrt} &= \beta_0 + \sum_{a=1}^{A}\alpha_aX_{alt} + \sum_{c=1}^{C}\gamma_cW_{clr} + \sum_{d=1}^{D}\delta_dZ_{dl} + \theta_t \\
 \theta_t &\sim N(0, \frac{1}{\tau})
 
@@ -41,17 +359,13 @@ where
 This model can be easily expanded to include different types of covariates (ie covariates that vary over time but not across block groups, such as gas prices or temperature). 
 
 
-# Simple Application
+## Simple Application
 
 In the spatiotemporal context, our response variable is total daily boardings and alightings by block group. This is plotted below. We assume a Poisson distribution. 
 
 ```{r}
-mod_dat <- readRDS('data/mt-data/daily_aggregation_1118.RDS')
-setDT(mod_dat)
-mod_dat[, daily_activity := sum(daily_boards + daily_alights), keyby = .(GEOID, date_key)]
-
-ggplot(mod_dat, aes(x=log(daily_activity))) +
-  geom_histogram()
+ggplot(mod_dat, aes(x=daily_activity)) +
+  geom_histogram() + theme_minimal()
 ```
 
 
