@@ -18,7 +18,14 @@ options(tigris_class = 'sf')
 apc <- readRDS('data/mt-data/apc-interpolated.RDS')
 setDT(apc)
 
-apc <- apc[!date_key %like% 2018]
+apc <- apc[!date_key %like% 2017]
+
+maple_grove <- c(780, 781, 782, 785, 783, 788, 787, 789)
+plymouth <- c(772, 774, 776, 777, 790, 793, 795, 771, 791)
+southwest <- c(600, 602, 690, 695, 697, 698, 699)
+
+apc <- apc[!line_id %in% maple_grove & !line_id %in% plymouth & !line_id %in% southwest]
+
 apc[, site_id := as.character(site_id)]
 
 # read stop to block group from "aggregate-apc.R" script
