@@ -1,4 +1,4 @@
-## Goal: get working modeling data for 2017
+## Goal: get 2017 covariate data
 
 packages <- c('data.table', 'tigris', 'ggplot2', 'dplyr', 'rgdal', 'sf')
 
@@ -14,24 +14,10 @@ rm(miss_pkgs, packages)
 
 options(tigris_class = 'sf')
 
-## Get 2017 average daily activity --------------
-
-apc <- readRDS('/Users/raven/Documents/honors/honors-work/data/mt-data/apc-bg-ag-sum.RDS')
-setDT(apc)
-
-# restrict to 2017
-apc <- apc[date_key %like% 2017]
-apc <- apc[, .(avg_activity = mean(ag_board + ag_alight), avg_trips = mean(ag_trips),
-               count_bus_stops = count_bus_stops, count_rail_stops = count_rail_stops), by = GEOID]
-apc <- unique(apc)
-
 # add basic acs
 acs <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/basic_acs.RDS')
 setDT(acs)
 acs <- acs[year == 3]
-apc <- apc[acs, on = 'GEOID']
-
-apc[, avg_act_per_capita := mean(avg_activity/estimate_tot_pop), by = 'GEOID']
 
 educ <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/education.RDS')
 house_veh <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/housing-and-vehicles.RDS')
@@ -40,6 +26,7 @@ nativity <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/n
 wac <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/wac/all-wac.RDS')
 rac <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/rac/all-rac.RDS')
 acs_emp <- readRDS('/Users/raven/Documents/honors/honors-work/data/covariates/acs-emp.RDS')
+walk <- readRDS('/Users/raven/Documents/honors/honors-work/data/isochrones/bg_isos_1122.RDS')
 setDT(educ)
 setDT(house_veh)
 setDT(language)
@@ -48,7 +35,10 @@ setDT(wac)
 setDT(rac)
 setDT(acs_emp)
 
-mod_dat <- apc[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID']
+acs[, year := NULL]
+acs[, NAME := NULL]
+
+mod_dat <- acs[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID']
 mod_dat <- mod_dat[house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], on = 'GEOID']
 mod_dat <- mod_dat[language[year == 3, c('GEOID', 'perc_english_only')], on = 'GEOID']
 
@@ -68,7 +58,11 @@ rac <- rac[, c("GEOID", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jo
 mod_dat <- mod_dat[wac, on = 'GEOID']
 mod_dat <- mod_dat[rac, on = 'GEOID']
 acs_emp <- acs_emp[year == "3", c("GEOID", "perc_transit_comm")]
-mod_dat <- mod_dat[acs_emp, on = 'GEOID']
+setnames(acs_emp, "GEOID", "tract_GEOID")
+mod_dat <- mod_dat[acs_emp, on = 'tract_GEOID']
+
+mod_dat <- mod_dat[walk[, c('GEOID', 'walkability')], on = 'GEOID']
+mod_dat[, walkability := as.numeric(walkability)]
 
 counties <- c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
 bgs <- block_groups("MN", counties, 2016)
@@ -78,9 +72,9 @@ setDT(mod_dat)
 
 mod_dat[, sqkm := ALAND/1000000]
 mod_dat[, emp_density := w_total_jobs_here/sqkm]
-mod_dat[, log_avg_act := log(avg_act_per_capita)]
+mod_dat[, pop_density := estimate_tot_pop/sqkm]
 mod_dat[, c('STATEFP', 'COUNTYFP', 'TRACTCE', 'BLKGRPCE', 'NAMELSAD', 'MTFCC', 'FUNCSTAT', 
-            'ALAND', 'AWATER', 'INTPTLAT', 'INTPTLON', 'NAME', 'geometry') := NULL]
+            'ALAND', 'AWATER', 'INTPTLAT', 'INTPTLON', 'geometry') := NULL]
 
 # save un-standardized
 saveRDS(mod_dat, 'data/ag-2017-dat.RDS')
@@ -88,21 +82,16 @@ saveRDS(mod_dat, 'data/ag-2017-dat.RDS')
 ## standardize ------------------------
 
 # alicia: log, then standardize
-small_dat <- mod_dat[, c("GEOID", "avg_act_per_capita", "avg_trips", "estimate_median_hh_income", "perc_only_white",
+small_dat <- mod_dat[, c("GEOID", "estimate_median_hh_income", "perc_only_white", "walkability", "estimate_tot_pop",
                          "perc_hs", "perc_bach", "perc_rent", "perc_no_veh", "perc_english_only", "perc_foreign",
                          "emp_density", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                          "perc_jobs_less40", "perc_jobs_age_less30", "w_total_jobs_here", "w_perc_jobs_white", 
                          "w_perc_jobs_men", "w_perc_jobs_no_college", "w_perc_jobs_less40", "w_perc_jobs_age_less30", 
-                         "sqkm", "estimate_tot_pop", "estimate_median_age", "count_rail_stops", "count_bus_stops",
-                         "perc_transit_comm")]
+                         "sqkm", "estimate_tot_pop", "estimate_median_age", "perc_transit_comm", "pop_density")]
 setDT(small_dat)
 
 # for modeling
-small_dat <- small_dat[!is.na(avg_act_per_capita)]
 small_dat[small_dat == 0] <- 0.01
-
-# one "infinite" at pigs eye lake
-small_dat <- small_dat[is.finite(avg_act_per_capita)]
 
 # log
 logged_dat <- lapply(small_dat[, -c('GEOID')], log)

@@ -41,12 +41,16 @@ apc_ag <- apc[, .(daily_boards = sum(board, na.rm = T), daily_alights = sum(alig
                   num_routes = length(unique(line_id)), daily_stops = .N), keyby = .(date_key, GEOID)]
 
 saveRDS(apc_ag, 'data/mt-data/daily_aggregation_1118.RDS')
+apc_ag <- readRDS('data/mt-data/daily_aggregation_1118.RDS')
 
 # more modeling specific things
 library(lubridate)
 apc_ag[, wday := wday(ymd(date_key))]
-apc_ag <- apc_ag[wday != 6 & wday != 7]
+#apc_ag <- apc_ag[wday != 6 & wday != 7] # won't want this for temporal
 apc_ag[, daily_activity := daily_boards + daily_alights, keyby = .(date_key, GEOID)]
 apc_ag[, total_daily_activity := sum(daily_activity, na.rm =T), keyby = .(date_key)]
 
-saveRDS(apc_ag, 'data/spattemp_mod_dat_1120.RDS')
+
+saveRDS(apc_ag, 'data/spattemp_mod_dat_1130.RDS')
+
+
