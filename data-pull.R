@@ -37,7 +37,7 @@ system.time(picks <- dbGetQuery(ch_sdw, "SELECT * from DIM_PICK_DATE"))
 avl_query <- paste0("
                     set transaction isolation level read uncommitted; 
                     SELECT DISTINCT date_key, a.trip_tmsk, block_number, trip_number, 
-                    line_id, line_direction, service_id, time_bracket_start
+                    line_id, line_direction, service_id, time_bracket_start, DIM_TRIP_TM.ROUTE_PROVIDER
                     FROM FACT_AVL a
                     LEFT JOIN DIM_TRIP_TM
                     on DIM_TRIP_TM.TRIP_TMSK = a.TRIP_TMSK
@@ -76,8 +76,9 @@ apc_query <- paste0("
                     ")
 
 # this is the long one:
-system.time(apc <- dbGetQuery(ch_sdw, apc_query))
+#system.time(apc <- dbGetQuery(ch_sdw, apc_query))
 #  888.329
+
 
 setDT(apc)
 setkey(apc, date_key, site_id)

@@ -19,7 +19,7 @@ rm(miss_pkgs, packages)
 ## data ---------------------------------------------------
 
 # observed APCs
-apc <- readRDS('data/apc.RDS')
+apc <- readRDS('data/mt-data/apc.RDS')
 apctrips <- apc[, unique(trip_tmsk)]
 
 # observed trips
