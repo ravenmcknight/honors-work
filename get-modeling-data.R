@@ -38,14 +38,14 @@ setDT(acs_emp)
 acs[, year := NULL]
 acs[, NAME := NULL]
 
-mod_dat <- acs[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID']
-mod_dat <- mod_dat[house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], on = 'GEOID']
-mod_dat <- mod_dat[language[year == 3, c('GEOID', 'perc_english_only')], on = 'GEOID']
+mod_dat <- acs[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID', all = TRUE]
+mod_dat <- mod_dat[house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], on = 'GEOID', all = TRUE]
+mod_dat <- mod_dat[language[year == 3, c('GEOID', 'perc_english_only')], on = 'GEOID', all = TRUE]
 
 setnames(nativity, 'GEOID', 'tract_GEOID')
 mod_dat[, tract_GEOID := substr(GEOID, 1, 11)]
 
-mod_dat <- mod_dat[nativity[year == 3, c('tract_GEOID', 'perc_native', 'perc_foreign')], on = 'tract_GEOID']
+mod_dat <- mod_dat[nativity[year == 3, c('tract_GEOID', 'perc_native', 'perc_foreign')], on = 'tract_GEOID', all = TRUE]
 
 wac <- wac[year == 2017]
 wac <- wac[, c("w_total_jobs_here", "GEOID", "w_perc_jobs_white", "w_perc_jobs_men", "w_perc_jobs_no_college", 
@@ -55,13 +55,13 @@ rac <- rac[year == 2017]
 rac <- rac[, c("GEOID", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                "perc_jobs_less40", "perc_jobs_age_less30")]
 
-mod_dat <- mod_dat[wac, on = 'GEOID']
-mod_dat <- mod_dat[rac, on = 'GEOID']
+mod_dat <- mod_dat[wac, on = 'GEOID', all = TRUE]
+mod_dat <- mod_dat[rac, on = 'GEOID', all = TRUE]
 acs_emp <- acs_emp[year == "3", c("GEOID", "perc_transit_comm")]
 setnames(acs_emp, "GEOID", "tract_GEOID")
-mod_dat <- mod_dat[acs_emp, on = 'tract_GEOID']
+mod_dat <- mod_dat[acs_emp, on = 'tract_GEOID', all = TRUE]
 
-mod_dat <- mod_dat[walk[, c('GEOID', 'walkability')], on = 'GEOID']
+mod_dat <- mod_dat[walk[, c('GEOID', 'walkability')], on = 'GEOID', all = TRUE]
 mod_dat[, walkability := as.numeric(walkability)]
 
 counties <- c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
@@ -82,7 +82,7 @@ saveRDS(mod_dat, 'data/ag-2017-dat.RDS')
 ## standardize ------------------------
 
 # alicia: log, then standardize
-small_dat <- mod_dat[, c("GEOID", "estimate_median_hh_income", "perc_only_white", "walkability", "estimate_tot_pop",
+small_dat <- mod_dat[, c("GEOID", "estimate_median_hh_income", "perc_only_white", "walkability",
                          "perc_hs", "perc_bach", "perc_rent", "perc_no_veh", "perc_english_only", "perc_foreign",
                          "emp_density", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
                          "perc_jobs_less40", "perc_jobs_age_less30", "w_total_jobs_here", "w_perc_jobs_white", 
@@ -104,5 +104,3 @@ scaled_dat$GEOID <- logged_dat$GEOID
 scaled_dat <- as.data.table(scaled_dat)
 
 saveRDS(scaled_dat, 'data/ag_2017_scaled_mod.RDS')
-
-
