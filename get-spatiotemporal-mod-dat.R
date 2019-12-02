@@ -18,7 +18,7 @@ options(tigris_class = 'sf')
 apc <- readRDS('data/mt-data/apc-interpolated.RDS')
 setDT(apc)
 
-apc <- apc[!date_key %like% 2018]
+apc <- apc[!date_key %like% 2017]
 apc[, site_id := as.character(site_id)]
 
 # read stop to block group from "aggregate-apc.R" script

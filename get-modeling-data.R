@@ -38,30 +38,31 @@ setDT(acs_emp)
 acs[, year := NULL]
 acs[, NAME := NULL]
 
-mod_dat <- acs[educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], on = 'GEOID', all = TRUE]
-mod_dat <- mod_dat[house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], on = 'GEOID', all = TRUE]
-mod_dat <- mod_dat[language[year == 3, c('GEOID', 'perc_english_only')], on = 'GEOID', all = TRUE]
+mod_dat <- merge(acs, educ[year == 3, c('perc_hs', 'perc_bach', 'GEOID')], by = 'GEOID', all.x = TRUE)
+mod_dat <- merge(mod_dat, house_veh[year == 3, c('GEOID', 'perc_rent', 'perc_owner_occ', 'perc_no_veh')], by = 'GEOID', all.x = TRUE)
+mod_dat <- merge(mod_dat, language[year == 3, c('GEOID', 'perc_english_only')], by = 'GEOID', all = TRUE)
 
 setnames(nativity, 'GEOID', 'tract_GEOID')
 mod_dat[, tract_GEOID := substr(GEOID, 1, 11)]
 
-mod_dat <- mod_dat[nativity[year == 3, c('tract_GEOID', 'perc_native', 'perc_foreign')], on = 'tract_GEOID', all = TRUE]
+mod_dat <- merge(mod_dat, nativity[year == 3, c('tract_GEOID', 'perc_native', 'perc_foreign')], by = 'tract_GEOID', all.x = TRUE)
 
 wac <- wac[year == 2017]
 wac <- wac[, c("w_total_jobs_here", "GEOID", "w_perc_jobs_white", "w_perc_jobs_men", "w_perc_jobs_no_college", 
-               "w_perc_jobs_less40", "w_perc_jobs_age_less30")]
-
+                "w_perc_jobs_less40", "w_perc_jobs_age_less30")]
+ 
 rac <- rac[year == 2017]
 rac <- rac[, c("GEOID", "tot_jobs", "perc_jobs_white", "perc_jobs_men", "perc_jobs_no_college", 
-               "perc_jobs_less40", "perc_jobs_age_less30")]
-
-mod_dat <- mod_dat[wac, on = 'GEOID', all = TRUE]
-mod_dat <- mod_dat[rac, on = 'GEOID', all = TRUE]
-acs_emp <- acs_emp[year == "3", c("GEOID", "perc_transit_comm")]
+                "perc_jobs_less40", "perc_jobs_age_less30")]
+ 
+mod_dat <- merge(mod_dat, wac, by = 'GEOID', all.x = TRUE)
+mod_dat <- merge(mod_dat, rac, by = 'GEOID', all.x = TRUE)
+acs_emp <- acs_emp[year == 3, c("GEOID", "perc_transit_comm")]
 setnames(acs_emp, "GEOID", "tract_GEOID")
-mod_dat <- mod_dat[acs_emp, on = 'tract_GEOID', all = TRUE]
+mod_dat <- merge(mod_dat, acs_emp, by = 'tract_GEOID', all.x = TRUE)
 
-mod_dat <- mod_dat[walk[, c('GEOID', 'walkability')], on = 'GEOID', all = TRUE]
+# for some reason, currently only have 1314 walkability observations?
+mod_dat <- merge(mod_dat, walk[, c('GEOID', 'walkability')], by = 'GEOID', all.x = TRUE)
 mod_dat[, walkability := as.numeric(walkability)]
 
 counties <- c("Anoka", "Carver", "Dakota", "Hennepin", "Ramsey", "Scott", "Washington")
@@ -98,9 +99,12 @@ logged_dat <- lapply(small_dat[, -c('GEOID')], log)
 logged_dat$GEOID <- small_dat$GEOID
 setDT(logged_dat)
 
+saveRDS(logged_dat, 'data/ag_2017_logged_mod.RDS')
+
 # scale
 scaled_dat <- lapply(logged_dat[, -c('GEOID')], scale)
 scaled_dat$GEOID <- logged_dat$GEOID
 scaled_dat <- as.data.table(scaled_dat)
 
 saveRDS(scaled_dat, 'data/ag_2017_scaled_mod.RDS')
+
