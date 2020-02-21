@@ -21,12 +21,14 @@ rm(miss_pkgs, packages)
 # observed APCs
 apc <- readRDS('data/mt-data/apc.RDS')
 apctrips <- apc[, unique(trip_tmsk)]
+apctrips <- apc[ROUTE_PROVIDER == "Metro Transit"]
 
 # observed trips
-trips <- readRDS('data/trips.RDS')
+trips <- readRDS('data/mt-data/trips.RDS')
+trips <- trips[ROUTE_PROVIDER == "Metro Transit"]
 
 # picks to get unique trip IDs to gap fill
-picks <- readRDS('data/picks.RDS')
+picks <- readRDS('data/mt-data/picks.RDS')
 setkey(picks, PICK_START_DATE_KEY, PICK_END_DATE_KEY)
 apc <- picks[apc, on = .(PICK_START_DATE_KEY = date_key), roll = T]
 setnames(apc, 'PICK_START_DATE_KEY', 'date_key')
@@ -104,7 +106,6 @@ pullSched <- function(x) {
   out <- as.data.table(dbGetQuery(ch_schedb, q))
   return(out)
 }
-
 # execute across all missing trips
 system.time(outlist <- lapply(1:nrow(noAPC_trips), function(x) pullSched(noAPC_trips[x])))
 gapSched <- rbindlist(outlist)
@@ -136,7 +137,7 @@ nrow(filledAPC[is.na(board)])/nrow(filledAPC) # unclear why so many are still mi
 apcboth <- rbindlist(list(apc[, .(date_key, line_id, line_direction, service_id, site_id, board, alight, interpolated = FALSE)], filledAPC[, .(date_key, line_id, line_direction, service_id, site_id = StopID, board, alight, interpolated)]))
 
 # save all data
-saveRDS(apcboth, 'data/apc-interpolated.RDS')
+saveRDS(apcboth, 'data/mt-data/apc-interpolated.RDS')
 
 ## Aggregate and export -----------------------------------
 # sum by route, stop, day for export
